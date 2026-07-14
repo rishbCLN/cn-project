@@ -86,26 +86,12 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
           ...glowStyle,
         }}
       >
-        {isDraggingConnection && connectionSourceId !== device.id && (
-          <Handle
-            type="target"
-            id="target-full"
-            position={Position.Top}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              opacity: 0,
-              zIndex: 100,
-              borderRadius: '12px',
-              transform: 'none',
-              border: 'none',
-              background: 'transparent',
-            }}
-          />
-        )}
+        <Handle
+          type="target"
+          id="target-full"
+          position={Position.Top}
+          className={`full-node-target ${isDraggingConnection && connectionSourceId !== device.id ? 'active' : ''}`}
+        />
         <div style={{
           color: isDisabled ? '#64748b' : color,
           display: 'flex',

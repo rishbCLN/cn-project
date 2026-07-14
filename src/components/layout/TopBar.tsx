@@ -7,7 +7,7 @@ export const TopBar: React.FC = () => {
   const saveProject = useNetworkStore(s => s.saveProject);
   const loadProject = useNetworkStore(s => s.loadProject);
   const getProjectJSON = useNetworkStore(s => s.getProjectJSON);
-  const resetSim = useNetworkStore(s => s.resetSim);
+  const resetWorkspace = useNetworkStore(s => s.resetWorkspace);
   const toggleMinimap = useUIStore(s => s.toggleMinimap);
   const showMinimap = useUIStore(s => s.showMinimap);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -80,7 +80,7 @@ export const TopBar: React.FC = () => {
         <div style={{ width: '1px', height: '20px', background: 'var(--border-glass)', margin: '0 6px' }} />
         <TopBarBtn label="💾 Save" onClick={handleSave} />
         <TopBarBtn label="📂 Load" onClick={handleLoad} />
-        <TopBarBtn label="🔄 Reset" onClick={resetSim} />
+        <TopBarBtn label="🔄 Reset" onClick={resetWorkspace} />
         <input
           ref={fileInputRef}
           type="file"

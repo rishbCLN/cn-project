@@ -185,6 +185,29 @@ html, body, #root {
   cursor: crosshair;
 }
 
+.react-flow__handle.full-node-target {
+  width: 100% !important;
+  height: 100% !important;
+  border: none !important;
+  border-radius: 12px !important;
+  transform: none !important;
+  top: 0 !important;
+  left: 0 !important;
+  background: transparent !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: -1 !important;
+}
+.react-flow__handle.full-node-target.active {
+  pointer-events: all !important;
+  z-index: 100 !important;
+}
+.react-flow__handle.full-node-target:hover {
+  transform: none !important;
+  filter: none !important;
+  cursor: inherit !important;
+}
+
 /* ─── Selection styles ─── */
 .react-flow__node.selected .device-node-card {
   border-color: var(--accent-cyan) !important;

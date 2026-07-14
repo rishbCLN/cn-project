@@ -46,6 +46,7 @@ interface NetworkStore {
   startSim: () => void;
   pauseSim: () => void;
   resetSim: () => void;
+  resetWorkspace: () => void;
   setSpeed: (speed: number) => void;
   setConditions: (config: Partial<SimConfig>) => void;
 
@@ -312,6 +313,19 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
     simState: 'idle',
     devices: get().devices.map(d => ({ ...d, load: 0 })),
     links: get().links.map(l => ({ ...l, utilization: 0 })),
+  }),
+
+  resetWorkspace: () => set({
+    devices: [],
+    links: [],
+    selectedDeviceId: null,
+    selectedLinkId: null,
+    activePackets: [],
+    packetHistory: [],
+    events: [],
+    metrics: { ...EMPTY_METRICS },
+    metricsHistory: [],
+    simState: 'idle',
   }),
 
   setSpeed: (speed) => set(state => ({
