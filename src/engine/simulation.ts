@@ -4,8 +4,8 @@
  * Handles conditions (loss, corruption, jitter), reliability (ACK, retransmit), and metrics.
  */
 
-import { Device, Link, Packet, Protocol, SimConfig, SimEvent, Metrics } from '../types';
-import { buildGraph, findShortestPath } from './routing';
+import { Device, Link, Packet, Protocol, SimConfig, SimEvent, Metrics, RoutingAlgorithm } from '../types';
+import { buildGraph, findPath } from './routing';
 import { computeCRC32 } from './crc';
 import { genId, simpleChecksum } from '../utils/helpers';
 
@@ -22,9 +22,10 @@ export function createPacket(
   size: number,
   devices: Device[],
   links: Link[],
+  routingAlgorithm: RoutingAlgorithm = 'dijkstra',
 ): { packet: Packet; events: SimEvent[] } | null {
   const graph = buildGraph(devices, links);
-  const result = findShortestPath(graph, sourceDevice.id, destDevice.id);
+  const result = findPath(graph, sourceDevice.id, destDevice.id, routingAlgorithm);
 
   if (!result) return null;
 
@@ -54,12 +55,14 @@ export function createPacket(
     hopTimestamps: [now],
   };
 
+  const algoLabel = routingAlgorithm === 'bellman-ford' ? 'Bellman-Ford' : 'Dijkstra';
+
   const events: SimEvent[] = [{
     id: genId(),
     time: now,
     type: 'packet_created',
     packetId: packet.id,
-    description: `Packet #${packet.seqNum} created: ${sourceDevice.ip} → ${destDevice.ip} [${protocol}]`,
+    description: `Packet #${packet.seqNum} created: ${sourceDevice.ip} → ${destDevice.ip} [${protocol}] — routed via ${algoLabel} (${result.iterations} relaxations, cost ${result.totalCost.toFixed(1)})`,
   }];
 
   return { packet, events };

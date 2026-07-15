@@ -93,6 +93,71 @@ export const Sidebar: React.FC = () => {
           Network Conditions
         </div>
 
+        {/* ─── Routing Algorithm Toggle ─── */}
+        <div style={{ marginBottom: '18px' }}>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            marginBottom: '8px',
+          }}>
+            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Routing Algorithm</span>
+          </div>
+          <div style={{
+            display: 'flex', gap: '4px',
+            background: 'var(--bg-tertiary)', borderRadius: '10px', padding: '3px',
+          }}>
+            {([
+              { value: 'dijkstra' as const, label: 'Dijkstra', color: '#06b6d4', desc: 'OSPF' },
+              { value: 'bellman-ford' as const, label: 'Bellman-Ford', color: '#f59e0b', desc: 'RIP' },
+            ]).map(algo => {
+              const isActive = simConfig.routingAlgorithm === algo.value;
+              return (
+                <motion.button
+                  key={algo.value}
+                  onClick={() => setConditions({ routingAlgorithm: algo.value })}
+                  whileTap={{ scale: 0.95 }}
+                  style={{
+                    flex: 1,
+                    padding: '8px 6px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: isActive
+                      ? `${algo.color}22`
+                      : 'transparent',
+                    cursor: 'pointer',
+                    transition: 'all 0.25s ease',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '2px',
+                    boxShadow: isActive
+                      ? `inset 0 0 0 1.5px ${algo.color}, 0 0 12px ${algo.color}33`
+                      : 'none',
+                  }}
+                >
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    color: isActive ? algo.color : 'var(--text-muted)',
+                    transition: 'color 0.2s',
+                  }}>
+                    {algo.label}
+                  </span>
+                  <span style={{
+                    fontSize: '9px',
+                    fontWeight: 500,
+                    color: isActive ? algo.color : 'var(--text-muted)',
+                    opacity: isActive ? 0.7 : 0.5,
+                    fontFamily: 'monospace',
+                    transition: 'all 0.2s',
+                  }}>
+                    {algo.desc}
+                  </span>
+                </motion.button>
+              );
+            })}
+          </div>
+        </div>
+
         <ConditionSlider
           label="Packet Loss"
           value={simConfig.packetLoss}

@@ -66,6 +66,7 @@ const DEFAULT_CONFIG: SimConfig = {
   latencyMultiplier: 1,
   jitter: 0,
   corruptionRate: 0,
+  routingAlgorithm: 'dijkstra',
 };
 
 const EMPTY_METRICS: Metrics = {
@@ -203,7 +204,7 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
     const dst = devices.find(d => d.id === dstId);
     if (!src || !dst) return;
 
-    const result = createPacket(src, dst, protocol, size, devices, links);
+    const result = createPacket(src, dst, protocol, size, devices, links, simConfig.routingAlgorithm);
     if (!result) {
       set(state => ({
         events: [...state.events, {

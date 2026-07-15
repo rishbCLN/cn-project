@@ -58,6 +58,9 @@ export interface Packet {
   isAck?: boolean;
 }
 
+/* ─── Routing ─── */
+export type RoutingAlgorithm = 'dijkstra' | 'bellman-ford';
+
 /* ─── Simulation ─── */
 export type SimState = 'idle' | 'running' | 'paused';
 
@@ -67,6 +70,7 @@ export interface SimConfig {
   latencyMultiplier: number;
   jitter: number;           // ms
   corruptionRate: number;   // 0–100
+  routingAlgorithm: RoutingAlgorithm;
 }
 
 /* ─── Events ─── */

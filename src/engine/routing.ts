@@ -1,13 +1,32 @@
 /**
  * Routing Engine
- * Implements Dijkstra's shortest-path algorithm.
+ * Implements Dijkstra's and Bellman-Ford shortest-path algorithms.
  * Considers bandwidth, latency, and cost for link weights.
  */
 
-import { Device, Link } from '../types';
+import { Device, Link, RoutingAlgorithm } from '../types';
+
+/* ─── Types ─── */
 
 interface GraphEdge {
   neighbor: string;
+  weight: number;
+  linkId: string;
+}
+
+export interface PathResult {
+  path: string[];
+  totalCost: number;
+  linkIds: string[];
+  algorithm: RoutingAlgorithm;
+  /** Number of iterations/relaxations the algorithm performed */
+  iterations: number;
+}
+
+/* ─── Flat edge for Bellman-Ford ─── */
+interface FlatEdge {
+  from: string;
+  to: string;
   weight: number;
   linkId: string;
 }
@@ -59,22 +78,49 @@ function computeLinkCost(link: Link): number {
   return link.cost + bwFactor + link.latency;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+ *  Dispatcher — picks the algorithm based on user selection
+ * ═══════════════════════════════════════════════════════════════ */
+
 /**
- * Dijkstra's algorithm.
- * Returns ordered path of device IDs, or null if unreachable.
+ * Find the shortest path using the selected algorithm.
+ * This is the primary entry point for the simulation engine.
  */
-export function findShortestPath(
+export function findPath(
+  graph: Map<string, GraphEdge[]>,
+  source: string,
+  destination: string,
+  algorithm: RoutingAlgorithm = 'dijkstra'
+): PathResult | null {
+  switch (algorithm) {
+    case 'bellman-ford':
+      return bellmanFord(graph, source, destination);
+    case 'dijkstra':
+    default:
+      return dijkstra(graph, source, destination);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+ *  Dijkstra's Algorithm (Link-State / OSPF style)
+ *  ─ Greedy, centralized
+ *  ─ O((V+E) log V) with a proper heap; O(V²) with array PQ
+ *  ─ Requires non-negative edge weights
+ * ═══════════════════════════════════════════════════════════════ */
+
+function dijkstra(
   graph: Map<string, GraphEdge[]>,
   source: string,
   destination: string
-): { path: string[]; totalCost: number; linkIds: string[] } | null {
+): PathResult | null {
   if (source === destination) {
-    return { path: [source], totalCost: 0, linkIds: [] };
+    return { path: [source], totalCost: 0, linkIds: [], algorithm: 'dijkstra', iterations: 0 };
   }
 
   const dist = new Map<string, number>();
   const prev = new Map<string, { node: string; linkId: string } | null>();
   const visited = new Set<string>();
+  let iterations = 0;
 
   // Initialize
   for (const node of graph.keys()) {
@@ -97,6 +143,7 @@ export function findShortestPath(
 
     for (const edge of graph.get(u) ?? []) {
       if (visited.has(edge.neighbor)) continue;
+      iterations++;
 
       const alt = (dist.get(u) ?? Infinity) + edge.weight;
       if (alt < (dist.get(edge.neighbor) ?? Infinity)) {
@@ -129,5 +176,125 @@ export function findShortestPath(
     path,
     totalCost: dist.get(destination) ?? Infinity,
     linkIds,
+    algorithm: 'dijkstra',
+    iterations,
   };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+ *  Bellman-Ford Algorithm (Distance-Vector / RIP style)
+ *  ─ Iterative, distributed
+ *  ─ O(V × E) — relaxes all edges V-1 times
+ *  ─ Handles negative edge weights
+ *  ─ Detects negative-weight cycles
+ * ═══════════════════════════════════════════════════════════════ */
+
+function bellmanFord(
+  graph: Map<string, GraphEdge[]>,
+  source: string,
+  destination: string
+): PathResult | null {
+  if (source === destination) {
+    return { path: [source], totalCost: 0, linkIds: [], algorithm: 'bellman-ford', iterations: 0 };
+  }
+
+  const vertices = Array.from(graph.keys());
+  const V = vertices.length;
+
+  // Flatten the adjacency list into an edge list
+  const edges: FlatEdge[] = [];
+  for (const [from, neighbors] of graph.entries()) {
+    for (const edge of neighbors) {
+      edges.push({
+        from,
+        to: edge.neighbor,
+        weight: edge.weight,
+        linkId: edge.linkId,
+      });
+    }
+  }
+
+  const dist = new Map<string, number>();
+  const prev = new Map<string, { node: string; linkId: string } | null>();
+  let iterations = 0;
+
+  // Initialize distances
+  for (const v of vertices) {
+    dist.set(v, Infinity);
+    prev.set(v, null);
+  }
+  dist.set(source, 0);
+
+  // Relax all edges V-1 times
+  for (let i = 0; i < V - 1; i++) {
+    let anyRelaxed = false;
+
+    for (const edge of edges) {
+      iterations++;
+      const du = dist.get(edge.from) ?? Infinity;
+      const dv = dist.get(edge.to) ?? Infinity;
+
+      if (du !== Infinity && du + edge.weight < dv) {
+        dist.set(edge.to, du + edge.weight);
+        prev.set(edge.to, { node: edge.from, linkId: edge.linkId });
+        anyRelaxed = true;
+      }
+    }
+
+    // Early termination: if no relaxation occurred, we're done
+    if (!anyRelaxed) break;
+  }
+
+  // Check for negative-weight cycles (V-th pass)
+  for (const edge of edges) {
+    const du = dist.get(edge.from) ?? Infinity;
+    const dv = dist.get(edge.to) ?? Infinity;
+
+    if (du !== Infinity && du + edge.weight < dv) {
+      // Negative cycle detected — no valid shortest path
+      console.warn('[Bellman-Ford] Negative-weight cycle detected');
+      return null;
+    }
+  }
+
+  // Reconstruct path
+  if (dist.get(destination) === Infinity) return null;
+
+  const path: string[] = [];
+  const linkIds: string[] = [];
+  let current: string | undefined = destination;
+
+  while (current) {
+    path.unshift(current);
+    const p = prev.get(current);
+    if (p) {
+      linkIds.unshift(p.linkId);
+      current = p.node;
+    } else {
+      break;
+    }
+  }
+
+  return {
+    path,
+    totalCost: dist.get(destination) ?? Infinity,
+    linkIds,
+    algorithm: 'bellman-ford',
+    iterations,
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+ *  Legacy export — keeps backwards compatibility
+ * ═══════════════════════════════════════════════════════════════ */
+
+/**
+ * @deprecated Use findPath() instead. Kept for backwards compatibility.
+ */
+export function findShortestPath(
+  graph: Map<string, GraphEdge[]>,
+  source: string,
+  destination: string
+): { path: string[]; totalCost: number; linkIds: string[] } | null {
+  return findPath(graph, source, destination, 'dijkstra');
 }
