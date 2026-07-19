@@ -32,7 +32,7 @@ interface NetworkStore {
   selectDevice: (id: string | null) => void;
   toggleDeviceStatus: (id: string) => void;
 
-  addLink: (source: string, target: string) => void;
+  addLink: (source: string, target: string, sourceHandle?: string | null, targetHandle?: string | null) => void;
   removeLink: (id: string) => void;
   updateLink: (id: string, updates: Partial<Link>) => void;
   selectLink: (id: string | null) => void;
@@ -139,7 +139,7 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
   },
 
   /* ─── Link Actions ─── */
-  addLink: (source, target) => {
+  addLink: (source, target, sourceHandle, targetHandle) => {
     // Prevent duplicate links
     const exists = get().links.some(
       l => (l.source === source && l.target === target) || (l.source === target && l.target === source)
@@ -150,6 +150,8 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
       id: genId(),
       source,
       target,
+      sourceHandle: sourceHandle || undefined,
+      targetHandle: targetHandle || undefined,
       bandwidth: 100,
       latency: 10,
       cost: 1,

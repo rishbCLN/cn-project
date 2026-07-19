@@ -17,6 +17,8 @@ export interface Link {
   id: string;
   source: string;
   target: string;
+  sourceHandle?: string;
+  targetHandle?: string;
   bandwidth: number;    // Mbps
   latency: number;      // ms
   cost: number;         // routing weight

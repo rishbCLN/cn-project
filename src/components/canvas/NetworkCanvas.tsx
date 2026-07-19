@@ -57,6 +57,8 @@ export const NetworkCanvas: React.FC = () => {
       id: link.id,
       source: link.source,
       target: link.target,
+      sourceHandle: link.sourceHandle,
+      targetHandle: link.targetHandle,
       type: 'network',
       data: {
         utilization: link.utilization,
@@ -90,7 +92,12 @@ export const NetworkCanvas: React.FC = () => {
 
   const onConnect = useCallback((connection: Connection) => {
     if (connection.source && connection.target) {
-      addLink(connection.source, connection.target);
+      addLink(
+        connection.source,
+        connection.target,
+        connection.sourceHandle,
+        connection.targetHandle
+      );
     }
     stopDraggingConnection();
   }, [addLink, stopDraggingConnection]);

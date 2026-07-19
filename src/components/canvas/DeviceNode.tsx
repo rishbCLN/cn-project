@@ -88,9 +88,27 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
       >
         <Handle
           type="target"
-          id="target-full"
+          id="target-top"
           position={Position.Top}
-          className={`full-node-target ${isDraggingConnection && connectionSourceId !== device.id ? 'active' : ''}`}
+          className={`sector-target sector-top ${isDraggingConnection && connectionSourceId !== device.id ? 'active' : ''}`}
+        />
+        <Handle
+          type="target"
+          id="target-bottom"
+          position={Position.Bottom}
+          className={`sector-target sector-bottom ${isDraggingConnection && connectionSourceId !== device.id ? 'active' : ''}`}
+        />
+        <Handle
+          type="target"
+          id="target-left"
+          position={Position.Left}
+          className={`sector-target sector-left ${isDraggingConnection && connectionSourceId !== device.id ? 'active' : ''}`}
+        />
+        <Handle
+          type="target"
+          id="target-right"
+          position={Position.Right}
+          className={`sector-target sector-right ${isDraggingConnection && connectionSourceId !== device.id ? 'active' : ''}`}
         />
         <div style={{
           color: isDisabled ? '#64748b' : color,
