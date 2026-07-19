@@ -15,7 +15,6 @@ import { useNetworkStore } from '../../stores/networkStore';
 import { useUIStore } from '../../stores/uiStore';
 import DeviceNode from './DeviceNode';
 import NetworkEdge from './NetworkEdge';
-import { PacketDots } from './PacketDot';
 import { DeviceType } from '../../types';
 
 const nodeTypes: NodeTypes = {
@@ -32,6 +31,7 @@ export const NetworkCanvas: React.FC = () => {
   const selectedDeviceId = useNetworkStore(s => s.selectedDeviceId);
   const addDevice = useNetworkStore(s => s.addDevice);
   const addLink = useNetworkStore(s => s.addLink);
+  const removeLink = useNetworkStore(s => s.removeLink);
   const selectDevice = useNetworkStore(s => s.selectDevice);
   const selectLink = useNetworkStore(s => s.selectLink);
   const updateDevicePosition = useNetworkStore(s => s.updateDevicePosition);
@@ -110,6 +110,10 @@ export const NetworkCanvas: React.FC = () => {
     selectLink(edge.id);
   }, [selectLink]);
 
+  const onEdgeDoubleClick = useCallback((_: React.MouseEvent, edge: Edge) => {
+    removeLink(edge.id);
+  }, [removeLink]);
+
   const onPaneClick = useCallback(() => {
     selectDevice(null);
     selectLink(null);
@@ -145,6 +149,7 @@ export const NetworkCanvas: React.FC = () => {
         onConnectEnd={onConnectEnd}
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}
+        onEdgeDoubleClick={onEdgeDoubleClick}
         onPaneClick={onPaneClick}
         onDragOver={onDragOver}
         onDrop={onDrop}
@@ -186,8 +191,6 @@ export const NetworkCanvas: React.FC = () => {
         )}
       </ReactFlow>
 
-      {/* Packet animation overlay */}
-      <PacketDots />
     </div>
   );
 };

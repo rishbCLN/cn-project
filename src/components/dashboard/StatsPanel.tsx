@@ -64,7 +64,7 @@ export const StatsPanel: React.FC = () => {
                     borderRadius: '8px',
                     fontSize: '11px',
                   }}
-                  formatter={(v: number) => [`${v.toFixed(1)} ms`, 'RTT']}
+                  formatter={(v: any) => [typeof v === 'number' ? `${v.toFixed(1)} ms` : String(v), 'RTT']}
                 />
                 <Line
                   type="monotone" dataKey="rtt" stroke="#06b6d4"
@@ -88,7 +88,7 @@ export const StatsPanel: React.FC = () => {
                     borderRadius: '8px',
                     fontSize: '11px',
                   }}
-                  formatter={(v: number) => [`${v.toFixed(1)}%`, 'Error Rate']}
+                  formatter={(v: any) => [typeof v === 'number' ? `${v.toFixed(1)}%` : String(v), 'Error Rate']}
                 />
                 <Area
                   type="monotone" dataKey="loss" stroke="#ef4444"
@@ -112,7 +112,7 @@ export const StatsPanel: React.FC = () => {
                     borderRadius: '8px',
                     fontSize: '11px',
                   }}
-                  formatter={(v: number) => [`${v.toFixed(2)} Mbps`, 'Throughput']}
+                  formatter={(v: any) => [typeof v === 'number' ? `${v.toFixed(2)} Mbps` : String(v), 'Throughput']}
                 />
                 <Area
                   type="monotone" dataKey="throughput" stroke="#10b981"

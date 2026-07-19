@@ -45,6 +45,7 @@ interface NetworkStore {
   advancePacket: (packetId: string) => void;
   startSim: () => void;
   pauseSim: () => void;
+  stopSim: () => void;
   resetSim: () => void;
   resetWorkspace: () => void;
   setSpeed: (speed: number) => void;
@@ -268,16 +269,20 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
         newHistory.push(result.ack);
       }
 
-      // Update utilization on links used by this packet
+      // Update utilization on links used by this packet in this hop
       const updatedLinks = state.links.map(l => {
-        const isUsed = result.packet.path.some((nodeId, idx) => {
-          if (idx >= result.packet.path.length - 1) return false;
-          const next = result.packet.path[idx + 1];
-          return (l.source === nodeId && l.target === next) || (l.source === next && l.target === nodeId);
-        });
+        const isUsed = (() => {
+          if (result.packet.currentHop === 0) return false;
+          const prev = result.packet.path[result.packet.currentHop - 1];
+          const curr = result.packet.path[result.packet.currentHop];
+          return (l.source === prev && l.target === curr) || (l.source === curr && l.target === prev);
+        })();
+
+        // Utilization increment scales inversely with link bandwidth (applying network theory)
+        const increment = Math.max(0.05, Math.min(0.5, 15 / l.bandwidth));
         return isUsed
-          ? { ...l, utilization: Math.min(1, l.utilization + 0.15) }
-          : { ...l, utilization: Math.max(0, l.utilization - 0.02) };
+          ? { ...l, utilization: Math.min(1, l.utilization + increment) }
+          : { ...l, utilization: Math.max(0, l.utilization - 0.05) };
       });
 
       // Update device loads
@@ -306,6 +311,12 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
 
   startSim: () => set({ simState: 'running' }),
   pauseSim: () => set({ simState: 'paused' }),
+  stopSim: () => set({
+    activePackets: [],
+    simState: 'idle',
+    devices: get().devices.map(d => ({ ...d, load: 0 })),
+    links: get().links.map(l => ({ ...l, utilization: 0 })),
+  }),
 
   resetSim: () => set({
     activePackets: [],

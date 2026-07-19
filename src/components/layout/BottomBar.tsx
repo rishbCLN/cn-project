@@ -11,6 +11,7 @@ export const BottomBar: React.FC = () => {
   const activePackets = useNetworkStore(s => s.activePackets);
   const startSim = useNetworkStore(s => s.startSim);
   const pauseSim = useNetworkStore(s => s.pauseSim);
+  const stopSim = useNetworkStore(s => s.stopSim);
   const resetSim = useNetworkStore(s => s.resetSim);
   const setSpeed = useNetworkStore(s => s.setSpeed);
   const pushNotification = useUIStore(s => s.pushNotification);
@@ -96,6 +97,7 @@ export const BottomBar: React.FC = () => {
         ) : (
           <ControlBtn icon="▶" label="Play" onClick={startSim} accent />
         )}
+        <ControlBtn icon="⏹" label="Stop" onClick={stopSim} />
         <ControlBtn icon="⏭" label="Step" onClick={handleStep} />
         <ControlBtn icon="↺" label="Reset" onClick={resetSim} />
       </div>
