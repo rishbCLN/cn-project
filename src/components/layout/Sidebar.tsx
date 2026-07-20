@@ -5,6 +5,8 @@ import { useUIStore } from '../../stores/uiStore';
 import { DeviceType } from '../../types';
 import { DEVICE_COLORS } from '../../utils/colors';
 
+import { PresetInfoCard } from '../dashboard/PresetInfoCard';
+
 const DEVICE_LIST: { type: DeviceType; label: string; icon: string }[] = [
   { type: 'router', label: 'Router', icon: '⬡' },
   { type: 'switch', label: 'Switch', icon: '⬢' },
@@ -91,6 +93,10 @@ export const Sidebar: React.FC = () => {
           textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '16px',
         }}>
           Network Conditions
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <PresetInfoCard compact />
         </div>
 
         {/* ─── Routing Algorithm Toggle ─── */}

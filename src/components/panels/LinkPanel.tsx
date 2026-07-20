@@ -110,6 +110,26 @@ export const LinkPanel: React.FC = () => {
           </div>
         </div>
 
+        {/* Live Link Capacity & Delay Calculation */}
+        <div style={{
+          background: 'rgba(10, 14, 26, 0.95)',
+          border: '1px solid var(--border-glass)',
+          borderRadius: '10px',
+          padding: '10px',
+          fontSize: '10px',
+          fontFamily: 'monospace',
+          color: 'var(--text-secondary)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '4px',
+        }}>
+          <div style={{ color: '#06b6d4', fontWeight: 700 }}>[Link Telemetry & Delay Calc]</div>
+          <div>• T_trans (512B MTU): {((512 * 8) / (link.bandwidth * 1000)).toFixed(3)} ms</div>
+          <div>• T_prop (Base): {link.latency} ms</div>
+          <div>• BDP (Capacity): {((link.bandwidth * link.latency) / 1000).toFixed(2)} Kbits</div>
+          <div>• Link Capacity: {link.bandwidth} Mbps</div>
+        </div>
+
         <motion.button
           onClick={() => toggleLinkStatus(link.id)}
           whileTap={{ scale: 0.95 }}

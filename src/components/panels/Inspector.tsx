@@ -170,6 +170,7 @@ export const Inspector: React.FC = () => {
       <div style={{
         borderRadius: '10px', overflow: 'hidden',
         border: '1px solid var(--border-glass)',
+        marginBottom: '16px',
       }}>
         {rows.map(([label, value], i) => (
           <div
@@ -193,6 +194,52 @@ export const Inspector: React.FC = () => {
             </span>
           </div>
         ))}
+      </div>
+
+      {/* ─── Layer-2/3/4 Frame Dump (Hex Telemetry) ─── */}
+      <div>
+        <div style={{
+          fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)',
+          textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px',
+        }}>
+          Layer-2/3/4 Frame Telemetry (Hex Dump)
+        </div>
+        <div style={{
+          background: 'rgba(10, 14, 26, 0.95)',
+          border: '1px solid var(--border-glass)',
+          borderRadius: '10px',
+          padding: '12px',
+          fontFamily: 'monospace',
+          fontSize: '10px',
+          color: '#38bdf8',
+          lineHeight: '1.6',
+        }}>
+          <div style={{ color: '#10b981', fontWeight: 700, marginBottom: '2px' }}>[L2 Ethernet II Frame]</div>
+          <div>Dst MAC: 00:1A:2B:3C:4D:02</div>
+          <div>Src MAC: 00:1A:2B:3C:4D:01</div>
+          <div>EtherType: 0x0800 (IPv4)</div>
+
+          <div style={{ color: '#3b82f6', fontWeight: 700, marginTop: '8px', marginBottom: '2px' }}>[L3 IPv4 Datagram Header]</div>
+          <div>Ver/IHL: 0x45 | TOS: 0x00 | Len: {packet.size} Bytes</div>
+          <div>ID: 0x{packet.seqNum.toString(16).padStart(4, '0')} | Flags: 0x4000 (DF) | TTL: {packet.ttl}</div>
+          <div>Proto: {packet.protocol === 'TCP' ? '0x06 (TCP)' : packet.protocol === 'UDP' ? '0x11 (UDP)' : '0x01 (ICMP)'}</div>
+          <div>Header Checksum: {packet.checksum}</div>
+          <div>Src IP: {packet.sourceIP} ➔ Dst IP: {packet.destIP}</div>
+
+          <div style={{ color: '#8b5cf6', fontWeight: 700, marginTop: '8px', marginBottom: '2px' }}>[L4 {packet.protocol} Segment Header]</div>
+          <div>Seq: 0x{packet.seqNum.toString(16).padStart(8, '0')} | Ack: 0x{packet.ackNum.toString(16).padStart(8, '0')}</div>
+          <div>Window Size: 64240 Bytes | Flags: [ACK, PSH]</div>
+          <div style={{
+            color: packet.crcValid ? '#10b981' : '#ef4444',
+            fontWeight: 700, marginTop: '6px',
+            padding: '4px 8px', borderRadius: '4px',
+            background: packet.crcValid ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+            border: `1px solid ${packet.crcValid ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+            display: 'inline-block',
+          }}>
+            CRC-32 Checksum: {packet.crc} ({packet.crcValid ? '✓ PASS' : '✕ CORRUPTED'})
+          </div>
+        </div>
       </div>
     </motion.div>
   );

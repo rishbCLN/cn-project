@@ -6,6 +6,8 @@ import { useUIStore } from '../../stores/uiStore';
 export const TopBar: React.FC = () => {
   const saveProject = useNetworkStore(s => s.saveProject);
   const loadProject = useNetworkStore(s => s.loadProject);
+  const loadPresetScenario = useNetworkStore(s => s.loadPresetScenario);
+  const activePreset = useNetworkStore(s => s.activePreset);
   const getProjectJSON = useNetworkStore(s => s.getProjectJSON);
   const resetWorkspace = useNetworkStore(s => s.resetWorkspace);
   const toggleMinimap = useUIStore(s => s.toggleMinimap);
@@ -76,6 +78,38 @@ export const TopBar: React.FC = () => {
 
       {/* Actions */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        {/* Presets Select Dropdown */}
+        <select
+          value={activePreset ?? ''}
+          onChange={(e) => {
+            if (e.target.value) {
+              loadPresetScenario(e.target.value as any);
+            }
+          }}
+          style={{
+            background: activePreset ? 'rgba(16, 185, 129, 0.22)' : 'rgba(16, 185, 129, 0.1)',
+            border: `1.5px solid ${activePreset ? '#10b981' : 'rgba(16, 185, 129, 0.3)'}`,
+            boxShadow: activePreset ? '0 0 14px rgba(16, 185, 129, 0.3)' : 'none',
+            borderRadius: '8px',
+            padding: '6px 12px',
+            fontSize: '12px',
+            fontWeight: 700,
+            color: '#10b981',
+            cursor: 'pointer',
+            fontFamily: 'Inter, sans-serif',
+            outline: 'none',
+            transition: 'all 0.25s ease',
+          }}
+        >
+          <option value="" disabled>⚡ Select Demo Preset…</option>
+          <option value="congestion" style={{ background: '#111827', color: '#f8fafc' }}>⚡ Bottleneck & Queue Delay</option>
+          <option value="retransmission" style={{ background: '#111827', color: '#f8fafc' }}>⚡ Loss & TCP Retransmission</option>
+          <option value="mesh_routing" style={{ background: '#111827', color: '#f8fafc' }}>⚡ Dijkstra Multi-Hop Routing</option>
+          <option value="star_topology" style={{ background: '#111827', color: '#f8fafc' }}>⚡ Star LAN (Subnet Broadcast)</option>
+          <option value="ring_redundancy" style={{ background: '#111827', color: '#f8fafc' }}>⚡ Ring Topology (RIP Failover)</option>
+          <option value="high_latency_sat" style={{ background: '#111827', color: '#f8fafc' }}>⚡ Satellite Link (High BDP)</option>
+        </select>
+
         <TopBarBtn label="Map" active={showMinimap} onClick={toggleMinimap} />
         <div style={{ width: '1px', height: '20px', background: 'var(--border-glass)', margin: '0 6px' }} />
         <TopBarBtn label="💾 Save" onClick={handleSave} />

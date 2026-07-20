@@ -25,6 +25,8 @@ const edgeTypes: EdgeTypes = {
   network: NetworkEdge,
 };
 
+import { PresetInfoCard } from '../dashboard/PresetInfoCard';
+
 export const NetworkCanvas: React.FC = () => {
   const devices = useNetworkStore(s => s.devices);
   const links = useNetworkStore(s => s.links);
@@ -196,6 +198,17 @@ export const NetworkCanvas: React.FC = () => {
         )}
       </ReactFlow>
 
+      {/* ─── Preset Scenario Description Floating Banner ─── */}
+      <div style={{
+        position: 'absolute',
+        top: 16,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 10,
+        pointerEvents: 'auto',
+      }}>
+        <PresetInfoCard />
+      </div>
     </div>
   );
 };

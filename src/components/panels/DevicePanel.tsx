@@ -72,6 +72,26 @@ export const DevicePanel: React.FC = () => {
           </div>
         </Field>
 
+        {/* Live Interface Telemetry Box */}
+        <div style={{
+          background: 'rgba(10, 14, 26, 0.95)',
+          border: '1px solid var(--border-glass)',
+          borderRadius: '10px',
+          padding: '10px',
+          fontSize: '10px',
+          fontFamily: 'monospace',
+          color: 'var(--text-secondary)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '4px',
+        }}>
+          <div style={{ color: color, fontWeight: 700 }}>[Interface Telemetry]</div>
+          <div>• MAC: {device.mac || '00:1A:2B:3C:4D:FE'}</div>
+          <div>• Buffer Queue: {Math.round((device.load ?? 0) * 16)} / 64 Packets</div>
+          <div>• Port Status: {device.status === 'active' ? 'ETH0 UP (1000Mbps)' : 'ETH0 DOWN'}</div>
+          <div>• Buffer Load: {((device.load ?? 0) * 100).toFixed(1)}%</div>
+        </div>
+
         <Field label="Status">
           <motion.button
             onClick={() => toggleDeviceStatus(device.id)}

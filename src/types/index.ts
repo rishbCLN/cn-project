@@ -7,6 +7,7 @@ export interface Device {
   type: DeviceType;
   label: string;
   ip: string;
+  mac?: string;
   status: DeviceStatus;
   position: { x: number; y: number };
   load: number; // 0–1 for heatmap glow
