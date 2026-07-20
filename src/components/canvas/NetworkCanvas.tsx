@@ -138,6 +138,10 @@ export const NetworkCanvas: React.FC = () => {
     addDevice(type, position);
   }, [addDevice]);
 
+  const isValidConnection = useCallback((connection: Connection) => {
+    return connection.source !== connection.target;
+  }, []);
+
   return (
     <div ref={reactFlowWrapper} style={{ width: '100%', height: '100%', position: 'relative' }}>
       <ReactFlow
@@ -147,6 +151,7 @@ export const NetworkCanvas: React.FC = () => {
         onConnect={onConnect}
         onConnectStart={onConnectStart}
         onConnectEnd={onConnectEnd}
+        isValidConnection={isValidConnection}
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}
         onEdgeDoubleClick={onEdgeDoubleClick}

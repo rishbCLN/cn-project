@@ -45,8 +45,8 @@ export const EVENT_COLORS: Record<string, string> = {
 
 /* ─── Device Icon Colors ─── */
 export const DEVICE_COLORS = {
-  router: '#3b82f6',
-  switch: '#10b981',
-  server: '#8b5cf6',
-  pc: '#06b6d4',
+  server: '#10b981', // Sober Green
+  router: '#3b82f6', // Sober Blue
+  switch: '#8b5cf6', // Sober Purple
+  pc: '#f59e0b',     // Sober Amber
 } as const;

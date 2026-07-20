@@ -92,7 +92,7 @@ export const BottomBar: React.FC = () => {
     }
   };
 
-  const speeds = [0.5, 1, 2, 4];
+  const speeds = [0.25, 0.5, 1, 2, 4];
 
   return (
     <div style={{
@@ -140,7 +140,7 @@ export const BottomBar: React.FC = () => {
               transition: 'all 0.2s',
             }}
           >
-            ×{s}
+            {s}x
           </motion.button>
         ))}
       </div>

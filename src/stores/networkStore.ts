@@ -63,7 +63,7 @@ interface NetworkStore {
 }
 
 const DEFAULT_CONFIG: SimConfig = {
-  speed: 1,
+  speed: 0.25,
   packetLoss: 0,
   latencyMultiplier: 1,
   jitter: 0,
@@ -102,7 +102,7 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
     const device: Device = {
       id,
       type,
-      label: `${labelMap[type]}${existingCount + 1}`,
+      label: `${labelMap[type]} #${existingCount + 1}`,
       ip: nextIP(),
       status: 'active',
       position,

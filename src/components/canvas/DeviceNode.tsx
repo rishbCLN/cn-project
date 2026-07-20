@@ -4,7 +4,6 @@ import { motion } from 'framer-motion';
 import { useNetworkStore } from '../../stores/networkStore';
 import { DEVICE_COLORS } from '../../utils/colors';
 import { DeviceType } from '../../types';
-import { useUIStore } from '../../stores/uiStore';
 
 /* ─── Device Icons (inline SVG for zero-dep) ─── */
 const DeviceIcons: Record<DeviceType, React.ReactNode> = {
@@ -44,8 +43,6 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
   const color = DEVICE_COLORS[device.type as DeviceType];
   const isDisabled = device.status === 'disabled';
   const load = device.load ?? 0;
-  const isDraggingConnection = useUIStore(s => s.isDraggingConnection);
-  const connectionSourceId = useUIStore(s => s.connectionSourceId);
 
   const activePackets = useNetworkStore(s => s.activePackets);
   const activePacket = useMemo(() => {
@@ -71,8 +68,83 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
     return {};
   }, [load, color, isDisabled, selected, activePacket]);
 
+  // Distinct professional shapes, faded subtle backgrounds, and sober borders per component type
+  const shapeStyle = useMemo(() => {
+    const typeKey = device.type as DeviceType;
+    const fadedBgs: Record<DeviceType, string> = {
+      server: 'rgba(16, 185, 129, 0.08)', // Sober Faded Green
+      router: 'rgba(59, 130, 246, 0.08)', // Sober Faded Blue
+      switch: 'rgba(139, 92, 246, 0.08)', // Sober Faded Purple
+      pc: 'rgba(245, 158, 11, 0.08)',     // Sober Faded Amber
+    };
+    const fadedBorders: Record<DeviceType, string> = {
+      server: 'rgba(16, 185, 129, 0.35)',
+      router: 'rgba(59, 130, 246, 0.45)',
+      switch: 'rgba(139, 92, 246, 0.35)',
+      pc: 'rgba(245, 158, 11, 0.35)',
+    };
+
+    const bg = isDisabled ? 'rgba(30, 41, 59, 0.85)' : fadedBgs[typeKey] ?? 'rgba(15, 23, 42, 0.85)';
+    const borderColor = selected ? color : isDisabled ? '#475569' : fadedBorders[typeKey] ?? 'rgba(255,255,255,0.1)';
+
+    switch (typeKey) {
+      case 'server':
+        return {
+          background: bg,
+          border: `1.5px solid ${borderColor}`,
+          borderRadius: '8px',
+          padding: '12px 14px',
+          minWidth: '105px',
+          minHeight: '110px',
+          display: 'flex',
+          flexDirection: 'column' as const,
+          justifyContent: 'center',
+          alignItems: 'center',
+        };
+      case 'router':
+        return {
+          background: bg,
+          border: `2px solid ${borderColor}`,
+          borderRadius: '50%',
+          padding: '16px 14px',
+          minWidth: '110px',
+          minHeight: '110px',
+          display: 'flex',
+          flexDirection: 'column' as const,
+          justifyContent: 'center',
+          alignItems: 'center',
+        };
+      case 'switch':
+        return {
+          background: bg,
+          border: `1.5px solid ${borderColor}`,
+          borderRadius: '5px',
+          padding: '8px 16px',
+          minWidth: '145px',
+          minHeight: '64px',
+        };
+      case 'pc':
+      default:
+        return {
+          background: bg,
+          border: `1.5px solid ${borderColor}`,
+          borderRadius: '12px 2px 12px 2px',
+          padding: '10px 14px',
+          minWidth: '110px',
+          minHeight: '80px',
+        };
+    }
+  }, [device.type, color, isDisabled, selected]);
+
   return (
     <>
+      {/* Target Connection Handles at Node Edges */}
+      <Handle type="target" id="target-top-dot" position={Position.Top} style={{ background: color }} />
+      <Handle type="target" id="target-bottom-dot" position={Position.Bottom} style={{ background: color }} />
+      <Handle type="target" id="target-left-dot" position={Position.Left} style={{ background: color }} />
+      <Handle type="target" id="target-right-dot" position={Position.Right} style={{ background: color }} />
+
+      {/* Source Connection Handles at Node Edges */}
       <Handle type="source" id="handle-top" position={Position.Top} style={{ background: color }} />
       <Handle type="source" id="handle-bottom" position={Position.Bottom} style={{ background: color }} />
       <Handle type="source" id="handle-left" position={Position.Left} style={{ background: color }} />
@@ -83,49 +155,36 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
         initial={{ scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         style={{
-          background: isDisabled
-            ? 'rgba(30, 30, 40, 0.8)'
-            : 'rgba(17, 24, 39, 0.85)',
           backdropFilter: 'blur(12px)',
-          border: `1.5px solid ${selected ? color : isDisabled ? '#374151' : 'rgba(255,255,255,0.08)'}`,
-          borderRadius: '12px',
-          padding: '12px 16px',
-          minWidth: '110px',
           textAlign: 'center',
-          transition: 'border-color 0.2s, box-shadow 0.3s',
+          transition: 'border-color 0.2s, box-shadow 0.3s, background-color 0.3s',
           position: 'relative',
+          ...shapeStyle,
           ...glowStyle,
         }}
       >
-        <Handle
-          type="target"
-          id="target-top"
-          position={Position.Top}
-          className={`sector-target sector-top ${isDraggingConnection && connectionSourceId !== device.id ? 'active' : ''}`}
-        />
-        <Handle
-          type="target"
-          id="target-bottom"
-          position={Position.Bottom}
-          className={`sector-target sector-bottom ${isDraggingConnection && connectionSourceId !== device.id ? 'active' : ''}`}
-        />
-        <Handle
-          type="target"
-          id="target-left"
-          position={Position.Left}
-          className={`sector-target sector-left ${isDraggingConnection && connectionSourceId !== device.id ? 'active' : ''}`}
-        />
-        <Handle
-          type="target"
-          id="target-right"
-          position={Position.Right}
-          className={`sector-target sector-right ${isDraggingConnection && connectionSourceId !== device.id ? 'active' : ''}`}
-        />
+        {/* Professional Chassis LED Header Indicators */}
+        {device.type === 'switch' && (
+          <div style={{ display: 'flex', gap: '3px', justifyContent: 'center', marginBottom: '4px', opacity: isDisabled ? 0.3 : 0.8 }}>
+            <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#8b5cf6' }} />
+            <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#10b981' }} />
+            <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#10b981' }} />
+            <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#06b6d4' }} />
+          </div>
+        )}
+
+        {device.type === 'server' && (
+          <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', marginBottom: '4px', opacity: isDisabled ? 0.3 : 0.8 }}>
+            <span style={{ width: '3px', height: '10px', borderRadius: '1px', background: '#10b981' }} />
+            <span style={{ width: '3px', height: '10px', borderRadius: '1px', background: '#10b981' }} />
+          </div>
+        )}
+
         <div style={{
           color: isDisabled ? '#64748b' : color,
           display: 'flex',
           justifyContent: 'center',
-          marginBottom: '6px',
+          marginBottom: device.type === 'router' ? '4px' : '6px',
           opacity: isDisabled ? 0.4 : 1,
         }}>
           {DeviceIcons[device.type as DeviceType]}
@@ -133,9 +192,10 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
 
         <div style={{
           fontSize: '12px',
-          fontWeight: 600,
-          color: isDisabled ? '#64748b' : '#f1f5f9',
+          fontWeight: 700,
+          color: isDisabled ? '#64748b' : '#f8fafc',
           marginBottom: '2px',
+          letterSpacing: '-0.01em',
         }}>
           {device.label}
         </div>

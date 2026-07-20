@@ -233,7 +233,7 @@ const NetworkEdge: React.FC<EdgeProps> = memo(({
               '✕ DOWN'
             ) : (
               <>
-                <span>{bandwidth}Mbps · {latency}ms</span>
+                <span>{bandwidth}Mbps · {(latency * simConfig.latencyMultiplier).toFixed(0)}ms</span>
                 {utilization > 0 && (
                   <span style={{
                     color: baseFlowColor,
@@ -241,7 +241,7 @@ const NetworkEdge: React.FC<EdgeProps> = memo(({
                     marginLeft: '5px',
                     transition: 'color 0.3s',
                   }}>
-                    · {(utilization * 100).toFixed(0)}%
+                    · Util {(utilization * 100).toFixed(0)}%
                   </span>
                 )}
               </>

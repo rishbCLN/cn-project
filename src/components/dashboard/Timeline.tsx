@@ -156,16 +156,57 @@ export const Timeline: React.FC = () => {
                   {event.type.replace(/_/g, ' ')}
                 </span>
 
-                {/* Description */}
-                <span style={{
-                  color: 'var(--text-secondary)',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  flex: 1,
-                }}>
-                  {event.description}
-                </span>
+                {/* Description & Scientific Telemetry Chips */}
+                {(() => {
+                  const parts = event.description.split(' — [');
+                  const mainDesc = parts[0];
+                  const rawMetrics = parts[1] ? parts[1].replace(']', '') : null;
+
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflowX: 'auto', flex: 1 }}>
+                      <span style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap', fontSize: '11px' }}>
+                        {mainDesc}
+                      </span>
+
+                      {rawMetrics && (
+                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                          {rawMetrics.split(' | ').map((metric, mIdx) => (
+                            <span
+                              key={mIdx}
+                              style={{
+                                fontSize: '9px',
+                                fontFamily: 'monospace',
+                                fontWeight: 600,
+                                background: metric.includes('CRC') || metric.includes('Goodput')
+                                  ? 'rgba(16, 185, 129, 0.12)'
+                                  : metric.includes('Loss') || metric.includes('FAIL')
+                                  ? 'rgba(239, 68, 68, 0.15)'
+                                  : 'rgba(6, 182, 212, 0.12)',
+                                border: `1px solid ${
+                                  metric.includes('CRC') || metric.includes('Goodput')
+                                    ? 'rgba(16, 185, 129, 0.3)'
+                                    : metric.includes('Loss') || metric.includes('FAIL')
+                                    ? 'rgba(239, 68, 68, 0.3)'
+                                    : 'rgba(6, 182, 212, 0.25)'
+                                }`,
+                                color: metric.includes('CRC') || metric.includes('Goodput')
+                                  ? '#34d399'
+                                  : metric.includes('Loss') || metric.includes('FAIL')
+                                  ? '#f87171'
+                                  : '#38bdf8',
+                                padding: '0.5px 5px',
+                                borderRadius: '3px',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {metric}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </motion.div>
             ))}
           </div>
