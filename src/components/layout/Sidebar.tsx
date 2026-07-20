@@ -159,6 +159,14 @@ export const Sidebar: React.FC = () => {
         </div>
 
         <ConditionSlider
+          label="Congestion"
+          value={simConfig.congestion}
+          unit="%"
+          max={100}
+          color="#f97316"
+          onChange={(v) => setConditions({ congestion: v })}
+        />
+        <ConditionSlider
           label="Packet Loss"
           value={simConfig.packetLoss}
           unit="%"

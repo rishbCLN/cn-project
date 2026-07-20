@@ -19,6 +19,7 @@ interface NetworkStore {
   /* ─── Packets ─── */
   activePackets: Packet[];
   packetHistory: Packet[];
+  lastPacketConfig: { srcId: string; dstId: string; protocol: Protocol; size: number } | null;
 
   /* ─── Events & Metrics ─── */
   events: SimEvent[];
@@ -67,6 +68,7 @@ const DEFAULT_CONFIG: SimConfig = {
   latencyMultiplier: 1,
   jitter: 0,
   corruptionRate: 0,
+  congestion: 0,
   routingAlgorithm: 'dijkstra',
 };
 
@@ -85,6 +87,7 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
   simConfig: { ...DEFAULT_CONFIG },
   activePackets: [],
   packetHistory: [],
+  lastPacketConfig: null,
   events: [],
   metrics: { ...EMPTY_METRICS },
   metricsHistory: [],
@@ -219,6 +222,7 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
     }
 
     set(state => ({
+      lastPacketConfig: { srcId, dstId, protocol, size },
       activePackets: [...state.activePackets, result.packet],
       packetHistory: [...state.packetHistory, result.packet],
       events: [...state.events, ...result.events],
@@ -278,11 +282,13 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
           return (l.source === prev && l.target === curr) || (l.source === curr && l.target === prev);
         })();
 
-        // Utilization increment scales inversely with link bandwidth (applying network theory)
+        // Utilization increment scales inversely with link bandwidth + global congestion factor
+        const congestionBase = (simConfig.congestion / 100) * 0.5;
         const increment = Math.max(0.05, Math.min(0.5, 15 / l.bandwidth));
-        return isUsed
-          ? { ...l, utilization: Math.min(1, l.utilization + increment) }
-          : { ...l, utilization: Math.max(0, l.utilization - 0.05) };
+        const targetUtil = isUsed
+          ? Math.min(1, l.utilization + increment)
+          : Math.max(congestionBase, l.utilization - 0.05);
+        return { ...l, utilization: targetUtil };
       });
 
       // Update device loads
@@ -309,7 +315,14 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
     });
   },
 
-  startSim: () => set({ simState: 'running' }),
+  startSim: () => {
+    const { activePackets, lastPacketConfig, sendPacket } = get();
+    if (activePackets.length === 0 && lastPacketConfig) {
+      sendPacket(lastPacketConfig.srcId, lastPacketConfig.dstId, lastPacketConfig.protocol, lastPacketConfig.size);
+    } else {
+      set({ simState: 'running' });
+    }
+  },
   pauseSim: () => set({ simState: 'paused' }),
   stopSim: () => set({
     activePackets: [],

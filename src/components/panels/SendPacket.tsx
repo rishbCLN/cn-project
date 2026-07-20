@@ -10,6 +10,7 @@ const PROTOCOLS: Protocol[] = ['TCP', 'UDP', 'ICMP', 'DNS'];
 export const SendPacketPanel: React.FC = () => {
   const devices = useNetworkStore(s => s.devices);
   const sendPacket = useNetworkStore(s => s.sendPacket);
+  const startSim = useNetworkStore(s => s.startSim);
   const activeDevices = devices.filter(d => d.status === 'active');
 
   const [srcId, setSrcId] = useState('');
@@ -22,6 +23,7 @@ export const SendPacketPanel: React.FC = () => {
   const handleSend = () => {
     if (!canSend) return;
     sendPacket(srcId, dstId, protocol, size);
+    startSim();
   };
 
   return (

@@ -101,8 +101,21 @@ export function processHop(
     events.push({
       id: genId(), time: now, type: 'packet_dropped',
       packetId: packet.id,
-      description: `Packet #${packet.seqNum} dropped: Random loss (${config.packetLoss}% chance)`,
+      description: `Packet #${packet.seqNum} dropped: Packet loss (${config.packetLoss}% chance)`,
     });
+
+    // TCP protocol attempts retransmission on packet loss
+    const retryCount = (packet as any).retryCount ?? 0;
+    if (packet.protocol === 'TCP' && retryCount < 3) {
+      updatedPacket.status = 'retransmitting';
+      (updatedPacket as any).retryCount = retryCount + 1;
+      events.push({
+        id: genId(), time: now, type: 'retransmission',
+        packetId: packet.id,
+        description: `TCP Retransmission #${retryCount + 1} scheduled for packet #${packet.seqNum} (Packet Loss recovery)`,
+      });
+    }
+
     return { packet: updatedPacket, events };
   }
 

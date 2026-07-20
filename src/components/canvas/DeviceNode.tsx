@@ -47,8 +47,19 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
   const isDraggingConnection = useUIStore(s => s.isDraggingConnection);
   const connectionSourceId = useUIStore(s => s.connectionSourceId);
 
+  const activePackets = useNetworkStore(s => s.activePackets);
+  const activePacket = useMemo(() => {
+    return activePackets.find(p => p.path[p.currentHop] === device.id && (p.status === 'in-transit' || p.status === 'created'));
+  }, [activePackets, device.id]);
+
   const glowStyle = useMemo(() => {
     if (isDisabled) return {};
+    if (activePacket) {
+      return {
+        boxShadow: `0 0 25px ${color}70, 0 0 50px ${color}30`,
+        borderColor: color,
+      };
+    }
     if (load > 0.7) {
       return {
         boxShadow: `0 0 ${20 + load * 30}px ${color}40, 0 0 ${40 + load * 60}px ${color}20`,
@@ -58,7 +69,7 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
       return { boxShadow: `0 0 20px ${color}30` };
     }
     return {};
-  }, [load, color, isDisabled, selected]);
+  }, [load, color, isDisabled, selected, activePacket]);
 
   return (
     <>
@@ -136,6 +147,29 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
         }}>
           {device.ip}
         </div>
+
+        {activePacket && !isDisabled && (
+          <div style={{
+            fontSize: '9px',
+            color: '#06b6d4',
+            fontWeight: 700,
+            marginTop: '4px',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+            fontFamily: 'monospace',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '3px',
+          }}>
+            <span style={{
+              width: '6px', height: '6px', borderRadius: '50%',
+              background: '#06b6d4',
+              boxShadow: '0 0 6px #06b6d4',
+            }} />
+            HOP #{activePacket.currentHop + 1}
+          </div>
+        )}
 
         {isDisabled && (
           <div style={{

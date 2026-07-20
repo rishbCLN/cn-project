@@ -28,35 +28,50 @@ export const BottomBar: React.FC = () => {
       return;
     }
 
-    const delay = 1200 / simConfig.speed;
+    // Base demo speed: 2500ms per step (with speed multipliers: 0.5x, 1x, 2x, 4x)
+    const delay = 2500 / simConfig.speed;
     intervalRef.current = window.setInterval(() => {
       const state = useNetworkStore.getState();
       const packets = state.activePackets;
 
       if (packets.length === 0) {
-        // No active packets — stop simulation
-        state.pauseSim();
+        if (state.lastPacketConfig) {
+          state.sendPacket(
+            state.lastPacketConfig.srcId,
+            state.lastPacketConfig.dstId,
+            state.lastPacketConfig.protocol,
+            state.lastPacketConfig.size
+          );
+        } else {
+          state.pauseSim();
+        }
         return;
       }
 
-      for (const p of packets) {
+      // Advance active packets sequentially with slight stagger for demo clarity
+      packets.forEach((p, index) => {
         if (p.status === 'in-transit' || p.status === 'created') {
-          state.advancePacket(p.id);
+          setTimeout(() => {
+            const currentState = useNetworkStore.getState();
+            if (currentState.simState === 'running') {
+              currentState.advancePacket(p.id);
 
-          // Push notifications for important events
-          const latestEvents = useNetworkStore.getState().events;
-          const last = latestEvents[latestEvents.length - 1];
-          if (last && (
-            last.type === 'packet_dropped' ||
-            last.type === 'packet_corrupted' ||
-            last.type === 'crc_fail' ||
-            last.type === 'packet_delivered' ||
-            last.type === 'retransmission'
-          )) {
-            pushNotification(last.description, last.type);
-          }
+              // Push notifications for important events
+              const latestEvents = useNetworkStore.getState().events;
+              const last = latestEvents[latestEvents.length - 1];
+              if (last && (
+                last.type === 'packet_dropped' ||
+                last.type === 'packet_corrupted' ||
+                last.type === 'crc_fail' ||
+                last.type === 'packet_delivered' ||
+                last.type === 'retransmission'
+              )) {
+                pushNotification(last.description, last.type);
+              }
+            }
+          }, index * 250); // 250ms stagger per concurrent packet
         }
-      }
+      });
     }, delay);
 
     return () => {
@@ -77,7 +92,7 @@ export const BottomBar: React.FC = () => {
     }
   };
 
-  const speeds = [1, 2, 5, 10];
+  const speeds = [0.5, 1, 2, 4];
 
   return (
     <div style={{

@@ -67,11 +67,12 @@ export type RoutingAlgorithm = 'dijkstra' | 'bellman-ford';
 export type SimState = 'idle' | 'running' | 'paused';
 
 export interface SimConfig {
-  speed: number;            // 1, 2, 5, 10
+  speed: number;            // 0.5, 1, 2, 5
   packetLoss: number;       // 0–100
   latencyMultiplier: number;
   jitter: number;           // ms
   corruptionRate: number;   // 0–100
+  congestion: number;       // 0–100 %
   routingAlgorithm: RoutingAlgorithm;
 }
 
