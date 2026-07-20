@@ -115,6 +115,23 @@ export const Timeline: React.FC = () => {
                   fontSize: '11px',
                 }}
               >
+                {/* Step Index Number */}
+                <span style={{
+                  fontSize: '9px',
+                  fontFamily: 'monospace',
+                  fontWeight: 700,
+                  color: '#94a3b8',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  borderRadius: '3px',
+                  padding: '0 4px',
+                  minWidth: '20px',
+                  textAlign: 'center',
+                  flexShrink: 0,
+                }}>
+                  {i + 1}.
+                </span>
+
                 {/* Dot */}
                 <div style={{
                   width: '6px', height: '6px', borderRadius: '50%',

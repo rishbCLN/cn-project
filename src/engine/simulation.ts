@@ -119,19 +119,33 @@ export function processHop(
     return { packet: updatedPacket, events };
   }
 
+  // ─── Advance hop ───
+  updatedPacket.currentHop++;
+  updatedPacket.hopTimestamps.push(now);
+  updatedPacket.status = 'in-transit';
+
+  const currentDeviceLabel = devices.find(d => d.id === packet.path[updatedPacket.currentHop])?.label ?? 'unknown';
+
+  // 1. Packet Hop (Physical/Link Layer arrival at node interface)
+  events.push({
+    id: genId(), time: now, type: 'packet_hop',
+    packetId: packet.id,
+    description: `Packet #${packet.seqNum} arrived at ${currentDeviceLabel}`,
+  });
+
   // ─── Apply corruption ───
   if (Math.random() * 100 < config.corruptionRate) {
     updatedPacket.crcValid = false;
     updatedPacket.status = 'corrupted';
     events.push({
-      id: genId(), time: now, type: 'packet_corrupted',
-      packetId: packet.id,
-      description: `Packet #${packet.seqNum} corrupted at hop ${packet.currentHop + 1}`,
-    });
-    events.push({
       id: genId(), time: now, type: 'crc_fail',
       packetId: packet.id,
-      description: `CRC FAILED for packet #${packet.seqNum} — expected ${packet.crc}`,
+      description: `CRC FAILED for packet #${packet.seqNum} — checksum mismatch`,
+    });
+    events.push({
+      id: genId(), time: now, type: 'packet_corrupted',
+      packetId: packet.id,
+      description: `Packet #${packet.seqNum} corrupted at hop ${packet.currentHop}`,
     });
 
     // TCP packets will be retransmitted
@@ -147,25 +161,14 @@ export function processHop(
     return { packet: updatedPacket, events };
   }
 
-  // ─── CRC pass ───
+  // 2. CRC Pass (Data Link Layer checksum verification upon arrival)
   events.push({
     id: genId(), time: now, type: 'crc_pass',
     packetId: packet.id,
-    description: `CRC PASSED for packet #${packet.seqNum} at hop ${packet.currentHop + 1}`,
+    description: `CRC PASSED for packet #${packet.seqNum} at hop ${updatedPacket.currentHop}`,
   });
 
-  // ─── Advance hop ───
-  updatedPacket.currentHop++;
-  updatedPacket.hopTimestamps.push(now);
-  updatedPacket.status = 'in-transit';
-
-  events.push({
-    id: genId(), time: now, type: 'packet_hop',
-    packetId: packet.id,
-    description: `Packet #${packet.seqNum} arrived at ${devices.find(d => d.id === packet.path[updatedPacket.currentHop])?.label ?? 'unknown'}`,
-  });
-
-  // ─── Check if delivered ───
+  // 3. Check if delivered (Transport/Network Layer payload delivery to destination)
   if (updatedPacket.currentHop >= updatedPacket.path.length - 1) {
     updatedPacket.status = 'delivered';
     updatedPacket.deliveredAt = now;
