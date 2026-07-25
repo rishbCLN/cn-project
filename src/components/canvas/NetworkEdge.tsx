@@ -14,6 +14,7 @@ const NetworkEdge: React.FC<EdgeProps> = memo(({
 }) => {
   const activePackets = useNetworkStore(s => s.activePackets);
   const simConfig = useNetworkStore(s => s.simConfig);
+  const simState = useNetworkStore(s => s.simState);
   const utilization = data?.utilization ?? 0;
   
   // ─── Network Parameter Visualizations ───
@@ -55,6 +56,7 @@ const NetworkEdge: React.FC<EdgeProps> = memo(({
   const bandwidth = data?.bandwidth ?? 100;
   const latency = data?.latency ?? 10;
   const congestionPct = simConfig.congestion ?? 0;
+  const isFlowing = simState === 'running' && (utilization > 0 || activePackets.length > 0);
 
   // 3. Flow Color & Congestion Bottlenecking
   const getFlowColor = (util: number, cong: number) => {
@@ -71,7 +73,7 @@ const NetworkEdge: React.FC<EdgeProps> = memo(({
   // High congestion thins out the liquid flow inside the pipe core to show bottleneck choke
   const baseWaterWidth = isDisabled
     ? 0
-    : utilization > 0 || activePackets.length > 0
+    : isFlowing
     ? (utilization < 0.4 ? 4.0 : utilization < 0.75 ? 6.0 : 8.0)
     : 3.5;
   const waterWidth = Math.max(1.5, baseWaterWidth * (1 - (congestionPct / 100) * 0.65));
@@ -92,11 +94,13 @@ const NetworkEdge: React.FC<EdgeProps> = memo(({
   // 7. Packet Loss Flickering & Congestion Choke Pulse
   const isLossy = simConfig.packetLoss > 10;
   const flickerDuration = Math.max(0.2, Math.min(2.0, 100 / simConfig.packetLoss));
-  const animationString = [
-    `${isReverse ? 'dash-flow-reverse' : 'dash-flow-forward'} ${flowDuration.toFixed(2)}s ${animationTiming} infinite`,
-    isLossy ? `flow-flicker ${flickerDuration}s ease-in-out infinite` : '',
-    congestionPct > 40 ? 'flow-choke-pulse 1.2s ease-in-out infinite' : ''
-  ].filter(Boolean).join(', ');
+  const animationString = isFlowing
+    ? [
+        `${isReverse ? 'dash-flow-reverse' : 'dash-flow-forward'} ${flowDuration.toFixed(2)}s ${animationTiming} infinite`,
+        isLossy ? `flow-flicker ${flickerDuration}s ease-in-out infinite` : '',
+        congestionPct > 40 ? 'flow-choke-pulse 1.2s ease-in-out infinite' : ''
+      ].filter(Boolean).join(', ')
+    : 'none';
 
   // 8. Casing color (Alert red for drop, Amber for high congestion, Cyan for selected)
   const casingStroke = hasRecentDrop
@@ -146,7 +150,7 @@ const NetworkEdge: React.FC<EdgeProps> = memo(({
       />
 
       {/* 3. Liquid Base / Flow Glow (Soft background color of liquid) */}
-      {!isDisabled && utilization > 0 && (
+      {!isDisabled && isFlowing && (
         <path
           d={edgePath}
           fill="none"
@@ -161,7 +165,7 @@ const NetworkEdge: React.FC<EdgeProps> = memo(({
       )}
 
       {/* 4. Active Flowing Water Stream */}
-      {!isDisabled && utilization > 0 && (
+      {!isDisabled && isFlowing && (
         <path
           id={id}
           d={edgePath}
@@ -178,7 +182,24 @@ const NetworkEdge: React.FC<EdgeProps> = memo(({
         />
       )}
 
-      {/* 5. Disabled Static Stream */}
+      {/* 5. Idle Static Stream when simulation is idle or no active flow */}
+      {!isDisabled && !isFlowing && (
+        <path
+          id={id}
+          d={edgePath}
+          fill="none"
+          stroke="rgba(148, 163, 184, 0.35)"
+          strokeWidth={3.5}
+          strokeLinecap="round"
+          strokeDasharray="6 4"
+          style={{
+            transition: 'stroke 0.3s, opacity 0.3s',
+            opacity: 0.5,
+          }}
+        />
+      )}
+
+      {/* 6. Disabled Static Stream */}
       {isDisabled && (
         <path
           id={id}

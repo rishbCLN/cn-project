@@ -119,6 +119,11 @@ export function calculateHopMetrics(
 /**
  * Process a single hop for a packet.
  * Returns updated packet + generated events.
+ *
+ * REACTIVE TOPOLOGY: Before advancing, validates that the next-hop link
+ * is still active. If the link was severed or removed, attempts a live
+ * reroute from the packet's current position. If no alternative path
+ * exists, the packet is dropped gracefully — the simulation continues.
  */
 export function processHop(
   packet: Packet,
@@ -131,12 +136,58 @@ export function processHop(
   let updatedPacket = { ...packet, hopTimestamps: [...packet.hopTimestamps] };
   let ack: Packet | undefined;
 
-  // Find link between previous hop and current hop to calculate physics formulas
+  // ─── REACTIVE: Validate next-hop link is still alive ───
   const prevDeviceId = packet.path[packet.currentHop];
   const nextDeviceId = packet.path[packet.currentHop + 1];
+
+  if (nextDeviceId) {
+    const nextLink = links.find(
+      l => l.status === 'active' &&
+        ((l.source === prevDeviceId && l.target === nextDeviceId) ||
+         (l.source === nextDeviceId && l.target === prevDeviceId))
+    );
+
+    // Link is gone or severed — attempt live reroute
+    if (!nextLink) {
+      const currentDevice = devices.find(d => d.id === prevDeviceId);
+      const destDevice = devices.find(d => d.id === packet.destDeviceId);
+      const currentLabel = currentDevice ? `${currentDevice.label} (${currentDevice.ip})` : prevDeviceId;
+
+      // Try to find an alternative route from current position
+      const graph = buildGraph(devices, links);
+      const reroute = findPath(graph, prevDeviceId, packet.destDeviceId, config.routingAlgorithm);
+
+      if (reroute) {
+        // Reroute succeeded — splice in the new path from current position
+        updatedPacket.path = [
+          ...packet.path.slice(0, packet.currentHop),
+          ...reroute.path,
+        ];
+        const destLabel = destDevice ? `${destDevice.label} (${destDevice.ip})` : packet.destIP;
+        events.push({
+          id: genId(), time: now, type: 'reroute' as any,
+          packetId: packet.id,
+          description: `⚡ REROUTE: Packet #${packet.seqNum} at ${currentLabel} — link severed, rerouted to ${destLabel} via new path (cost ${reroute.totalCost.toFixed(1)}, ${reroute.path.length - 1} hops)`,
+        });
+        // Continue processing with the new path (fall through to normal hop logic)
+      } else {
+        // No alternative route — drop gracefully, do NOT pause simulation
+        updatedPacket.status = 'dropped';
+        events.push({
+          id: genId(), time: now, type: 'packet_dropped',
+          packetId: packet.id,
+          description: `Packet #${packet.seqNum} dropped at ${currentLabel} — next-hop link severed and no alternative route to ${destDevice?.label ?? packet.destIP}`,
+        });
+        return { packet: updatedPacket, events };
+      }
+    }
+  }
+
+  // Find the (possibly rerouted) active link for physics calculations
   const activeLink = links.find(
-    l => (l.source === prevDeviceId && l.target === nextDeviceId) ||
-         (l.source === nextDeviceId && l.target === prevDeviceId)
+    l => l.status === 'active' &&
+      ((l.source === prevDeviceId && l.target === updatedPacket.path[packet.currentHop + 1]) ||
+       (l.source === updatedPacket.path[packet.currentHop + 1] && l.target === prevDeviceId))
   );
 
   const bwMbps = activeLink?.bandwidth ?? 100;

@@ -45,6 +45,14 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
   const load = device.load ?? 0;
 
   const activePackets = useNetworkStore(s => s.activePackets);
+  const links = useNetworkStore(s => s.links);
+  const devices = useNetworkStore(s => s.devices);
+  const toggleLinkStatus = useNetworkStore(s => s.toggleLinkStatus);
+
+  const connectedLinks = useMemo(() => {
+    return links.filter(l => l.source === device.id || l.target === device.id);
+  }, [links, device.id]);
+
   const activePacket = useMemo(() => {
     return activePackets.find(p => p.path[p.currentHop] === device.id && (p.status === 'in-transit' || p.status === 'created'));
   }, [activePackets, device.id]);
@@ -118,10 +126,10 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
         return {
           background: bg,
           border: `1.5px solid ${borderColor}`,
-          borderRadius: '5px',
-          padding: '8px 16px',
-          minWidth: '145px',
-          minHeight: '64px',
+          borderRadius: '8px',
+          padding: '10px 14px',
+          minWidth: '150px',
+          minHeight: '80px',
         };
       case 'pc':
       default:
@@ -163,13 +171,22 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
           ...glowStyle,
         }}
       >
-        {/* Professional Chassis LED Header Indicators */}
-        {device.type === 'switch' && (
-          <div style={{ display: 'flex', gap: '3px', justifyContent: 'center', marginBottom: '4px', opacity: isDisabled ? 0.3 : 0.8 }}>
-            <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#8b5cf6' }} />
-            <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#10b981' }} />
-            <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#10b981' }} />
-            <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#06b6d4' }} />
+        {/* Dynamic Connected Port LEDs */}
+        {connectedLinks.length > 0 && (
+          <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', marginBottom: '6px', opacity: isDisabled ? 0.3 : 1 }}>
+            {connectedLinks.map((l, i) => (
+              <span
+                key={l.id}
+                title={`Port ${i + 1}: ${l.status === 'active' ? 'Active Flow' : 'Cut Off'}`}
+                style={{
+                  width: '5px',
+                  height: '5px',
+                  borderRadius: '50%',
+                  background: l.status === 'active' ? '#10b981' : '#ef4444',
+                  boxShadow: `0 0 5px ${l.status === 'active' ? '#10b981' : '#ef4444'}`,
+                }}
+              />
+            ))}
           </div>
         )}
 
@@ -208,26 +225,94 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
           {device.ip}
         </div>
 
+        {/* Floating HOP Badge Overlay — Absolute Positioned to prevent layout jump or node square enlargement */}
         {activePacket && !isDisabled && (
-          <div style={{
-            fontSize: '9px',
-            color: '#06b6d4',
-            fontWeight: 700,
-            marginTop: '4px',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-            fontFamily: 'monospace',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '3px',
-          }}>
-            <span style={{
-              width: '6px', height: '6px', borderRadius: '50%',
+          <motion.div
+            initial={{ scale: 0.5, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.5, opacity: 0 }}
+            style={{
+              position: 'absolute',
+              top: '-10px',
+              right: '-10px',
               background: '#06b6d4',
-              boxShadow: '0 0 6px #06b6d4',
+              color: '#042f2e',
+              fontSize: '9px',
+              fontWeight: 800,
+              padding: '2px 7px',
+              borderRadius: '10px',
+              boxShadow: '0 0 10px rgba(6, 182, 212, 0.8), 0 0 20px rgba(6, 182, 212, 0.4)',
+              fontFamily: 'monospace',
+              letterSpacing: '0.05em',
+              zIndex: 20,
+              pointerEvents: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            <span style={{
+              width: '5px',
+              height: '5px',
+              borderRadius: '50%',
+              background: '#042f2e',
             }} />
             HOP #{activePacket.currentHop + 1}
+          </motion.div>
+        )}
+
+        {/* Default Port Flow Control on Canvas Node */}
+        {connectedLinks.length > 0 && !isDisabled && (
+          <div
+            className="nodrag"
+            style={{
+              marginTop: '6px',
+              paddingTop: '6px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px',
+            }}
+          >
+            <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Port Cut-off
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', justifyContent: 'center' }}>
+              {connectedLinks.map((l, idx) => {
+                const peerId = l.source === device.id ? l.target : l.source;
+                const peer = devices.find(d => d.id === peerId);
+                const isActive = l.status === 'active';
+
+                return (
+                  <button
+                    key={l.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleLinkStatus(l.id);
+                    }}
+                    style={{
+                      padding: '3px 6px',
+                      borderRadius: '5px',
+                      fontSize: '9px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      border: `1px solid ${isActive ? 'rgba(16, 185, 129, 0.5)' : 'rgba(239, 68, 68, 0.5)'}`,
+                      background: isActive ? 'rgba(16, 185, 129, 0.18)' : 'rgba(239, 68, 68, 0.25)',
+                      color: isActive ? '#34d399' : '#f87171',
+                      fontFamily: 'monospace',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '3px',
+                      transition: 'all 0.15s ease',
+                    }}
+                    title={`Port #${idx + 1} (${peer?.label || 'Node'}): Click to ${isActive ? 'cut off' : 'start'} flow`}
+                  >
+                    <span>P{idx + 1}: {peer?.label ? peer.label.replace(/^(\w+)\s*#?/, '$1') : `Node${idx+1}`}</span>
+                    <span style={{ fontSize: '10px' }}>{isActive ? '🟢' : '🔴'}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 
