@@ -50,6 +50,7 @@ export const NetworkCanvas: React.FC = () => {
       position: device.position,
       data: { device },
       selected: device.id === selectedDeviceId,
+      dragHandle: '.device-node-card',
     }));
   }, [devices, selectedDeviceId]);
 
@@ -73,7 +74,7 @@ export const NetworkCanvas: React.FC = () => {
 
   const onNodesChange: OnNodesChange = useCallback((changes) => {
     for (const change of changes) {
-      if (change.type === 'position' && change.dragging && change.position) {
+      if (change.type === 'position' && change.position) {
         updateDevicePosition(change.id, change.position);
       }
     }

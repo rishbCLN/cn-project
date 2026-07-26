@@ -147,16 +147,16 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
   return (
     <>
       {/* Target Connection Handles at Node Edges */}
-      <Handle type="target" id="target-top-dot" position={Position.Top} style={{ background: color }} />
-      <Handle type="target" id="target-bottom-dot" position={Position.Bottom} style={{ background: color }} />
-      <Handle type="target" id="target-left-dot" position={Position.Left} style={{ background: color }} />
-      <Handle type="target" id="target-right-dot" position={Position.Right} style={{ background: color }} />
+      <Handle type="target" id="target-top-dot" position={Position.Top} style={{ background: color, width: '6px', height: '6px', top: '-3px' }} />
+      <Handle type="target" id="target-bottom-dot" position={Position.Bottom} style={{ background: color, width: '6px', height: '6px', bottom: '-3px' }} />
+      <Handle type="target" id="target-left-dot" position={Position.Left} style={{ background: color, width: '6px', height: '6px', left: '-3px' }} />
+      <Handle type="target" id="target-right-dot" position={Position.Right} style={{ background: color, width: '6px', height: '6px', right: '-3px' }} />
 
       {/* Source Connection Handles at Node Edges */}
-      <Handle type="source" id="handle-top" position={Position.Top} style={{ background: color }} />
-      <Handle type="source" id="handle-bottom" position={Position.Bottom} style={{ background: color }} />
-      <Handle type="source" id="handle-left" position={Position.Left} style={{ background: color }} />
-      <Handle type="source" id="handle-right" position={Position.Right} style={{ background: color }} />
+      <Handle type="source" id="handle-top" position={Position.Top} style={{ background: color, width: '6px', height: '6px', top: '-3px' }} />
+      <Handle type="source" id="handle-bottom" position={Position.Bottom} style={{ background: color, width: '6px', height: '6px', bottom: '-3px' }} />
+      <Handle type="source" id="handle-left" position={Position.Left} style={{ background: color, width: '6px', height: '6px', left: '-3px' }} />
+      <Handle type="source" id="handle-right" position={Position.Right} style={{ background: color, width: '6px', height: '6px', right: '-3px' }} />
 
       <motion.div
         className="device-node-card"
@@ -167,13 +167,16 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
           textAlign: 'center',
           transition: 'border-color 0.2s, box-shadow 0.3s, background-color 0.3s',
           position: 'relative',
+          cursor: 'grab',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
           ...shapeStyle,
           ...glowStyle,
         }}
       >
         {/* Dynamic Connected Port LEDs */}
         {connectedLinks.length > 0 && (
-          <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', marginBottom: '6px', opacity: isDisabled ? 0.3 : 1 }}>
+          <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', marginBottom: '6px', opacity: isDisabled ? 0.3 : 1, pointerEvents: 'none' }}>
             {connectedLinks.map((l, i) => (
               <span
                 key={l.id}
@@ -191,7 +194,7 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
         )}
 
         {device.type === 'server' && (
-          <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', marginBottom: '4px', opacity: isDisabled ? 0.3 : 0.8 }}>
+          <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', marginBottom: '4px', opacity: isDisabled ? 0.3 : 0.8, pointerEvents: 'none' }}>
             <span style={{ width: '3px', height: '10px', borderRadius: '1px', background: '#10b981' }} />
             <span style={{ width: '3px', height: '10px', borderRadius: '1px', background: '#10b981' }} />
           </div>
@@ -203,6 +206,7 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
           justifyContent: 'center',
           marginBottom: device.type === 'router' ? '4px' : '6px',
           opacity: isDisabled ? 0.4 : 1,
+          pointerEvents: 'none',
         }}>
           {DeviceIcons[device.type as DeviceType]}
         </div>
@@ -213,6 +217,7 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
           color: isDisabled ? '#64748b' : '#f8fafc',
           marginBottom: '2px',
           letterSpacing: '-0.01em',
+          pointerEvents: 'none',
         }}>
           {device.label}
         </div>
@@ -221,6 +226,7 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
           fontSize: '10px',
           color: '#64748b',
           fontFamily: 'monospace',
+          pointerEvents: 'none',
         }}>
           {device.ip}
         </div>
@@ -264,7 +270,6 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
         {/* Default Port Flow Control on Canvas Node */}
         {connectedLinks.length > 0 && !isDisabled && (
           <div
-            className="nodrag"
             style={{
               marginTop: '6px',
               paddingTop: '6px',
@@ -274,7 +279,7 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
               gap: '4px',
             }}
           >
-            <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', pointerEvents: 'none' }}>
               Port Cut-off
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', justifyContent: 'center' }}>
@@ -286,6 +291,7 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
                 return (
                   <button
                     key={l.id}
+                    className="nodrag"
                     onClick={(e) => {
                       e.stopPropagation();
                       toggleLinkStatus(l.id);
@@ -304,6 +310,7 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
                       alignItems: 'center',
                       gap: '3px',
                       transition: 'all 0.15s ease',
+                      pointerEvents: 'auto',
                     }}
                     title={`Port #${idx + 1} (${peer?.label || 'Node'}): Click to ${isActive ? 'cut off' : 'start'} flow`}
                   >
