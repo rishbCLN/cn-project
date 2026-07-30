@@ -34,6 +34,10 @@ export const PacketDots: React.FC = () => {
           id: packet.id,
           seqNum: packet.seqNum,
           protocol: packet.protocol,
+          checksum: packet.checksum,
+          crc: packet.crc,
+          crcValid: packet.crcValid,
+          status: packet.status,
           isAck: packet.isAck,
           from: fromDevice.position,
           to: toDevice.position,
@@ -46,7 +50,7 @@ export const PacketDots: React.FC = () => {
     <AnimatePresence>
       {dots.map(dot => {
         if (!dot) return null;
-        const color = dot.isAck ? '#10b981' : PROTOCOL_COLORS[dot.protocol];
+        const color = dot.isAck ? '#10b981' : dot.status === 'corrupted' ? '#ef4444' : PROTOCOL_COLORS[dot.protocol];
 
         return (
           <motion.div
@@ -85,25 +89,36 @@ export const PacketDots: React.FC = () => {
               justifyContent: 'center',
             }}
           >
-            {/* Packet Label Tooltip Tag */}
+            {/* Packet Label Tooltip Tag with CRC & Checksum */}
             <div
               style={{
                 position: 'absolute',
-                top: '-22px',
+                top: '-24px',
                 whiteSpace: 'nowrap',
-                background: 'rgba(10, 14, 26, 0.9)',
-                border: `1px solid ${color}`,
-                borderRadius: '4px',
-                padding: '1px 6px',
+                background: 'rgba(10, 14, 26, 0.95)',
+                border: `1.5px solid ${color}`,
+                borderRadius: '5px',
+                padding: '2px 8px',
                 fontSize: '9px',
                 fontWeight: 700,
                 color: '#f8fafc',
                 fontFamily: 'monospace',
                 pointerEvents: 'none',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.6)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
               }}
             >
-              {dot.isAck ? `ACK #${dot.seqNum}` : `#${dot.seqNum} ${dot.protocol}`}
+              <span>{dot.isAck ? `ACK #${dot.seqNum}` : `#${dot.seqNum} ${dot.protocol}`}</span>
+              {!dot.isAck && dot.crc && (
+                <span style={{ color: dot.status === 'corrupted' ? '#f87171' : '#34d399', fontSize: '8px' }}>
+                  [CRC: 0x{dot.crc.slice(0, 4).toUpperCase()} | SUM: 0x{dot.checksum}]
+                </span>
+              )}
+              {dot.status === 'corrupted' && (
+                <span style={{ color: '#ef4444', fontWeight: 800 }}>⚠️ CRC FAIL</span>
+              )}
             </div>
 
             {/* Glowing Pulse Ring */}

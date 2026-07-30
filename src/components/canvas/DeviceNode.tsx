@@ -1,6 +1,6 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useMemo, useState } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useNetworkStore } from '../../stores/networkStore';
 import { DEVICE_COLORS } from '../../utils/colors';
 import { DeviceType } from '../../types';
@@ -56,6 +56,10 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
   const activePacket = useMemo(() => {
     return activePackets.find(p => p.path[p.currentHop] === device.id && (p.status === 'in-transit' || p.status === 'created'));
   }, [activePackets, device.id]);
+
+  const [showTheory, setShowTheory] = useState(false);
+  const isSender = activePacket ? (activePacket.currentHop === 0 || activePacket.sourceDeviceId === device.id) : false;
+  const isCorrupted = activePacket ? (activePacket.status === 'corrupted' || !activePacket.crcValid) : false;
 
   const glowStyle = useMemo(() => {
     if (isDisabled) return {};
@@ -147,16 +151,16 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
   return (
     <>
       {/* Target Connection Handles at Node Edges */}
-      <Handle type="target" id="target-top-dot" position={Position.Top} style={{ background: color, width: '6px', height: '6px', top: '-3px' }} />
-      <Handle type="target" id="target-bottom-dot" position={Position.Bottom} style={{ background: color, width: '6px', height: '6px', bottom: '-3px' }} />
-      <Handle type="target" id="target-left-dot" position={Position.Left} style={{ background: color, width: '6px', height: '6px', left: '-3px' }} />
-      <Handle type="target" id="target-right-dot" position={Position.Right} style={{ background: color, width: '6px', height: '6px', right: '-3px' }} />
+      <Handle type="target" id="target-top-dot" position={Position.Top} style={{ background: color, width: '10px', height: '10px', top: '-5px' }} />
+      <Handle type="target" id="target-bottom-dot" position={Position.Bottom} style={{ background: color, width: '10px', height: '10px', bottom: '-5px' }} />
+      <Handle type="target" id="target-left-dot" position={Position.Left} style={{ background: color, width: '10px', height: '10px', left: '-5px' }} />
+      <Handle type="target" id="target-right-dot" position={Position.Right} style={{ background: color, width: '10px', height: '10px', right: '-5px' }} />
 
       {/* Source Connection Handles at Node Edges */}
-      <Handle type="source" id="handle-top" position={Position.Top} style={{ background: color, width: '6px', height: '6px', top: '-3px' }} />
-      <Handle type="source" id="handle-bottom" position={Position.Bottom} style={{ background: color, width: '6px', height: '6px', bottom: '-3px' }} />
-      <Handle type="source" id="handle-left" position={Position.Left} style={{ background: color, width: '6px', height: '6px', left: '-3px' }} />
-      <Handle type="source" id="handle-right" position={Position.Right} style={{ background: color, width: '6px', height: '6px', right: '-3px' }} />
+      <Handle type="source" id="handle-top" position={Position.Top} style={{ background: color, width: '10px', height: '10px', top: '-5px' }} />
+      <Handle type="source" id="handle-bottom" position={Position.Bottom} style={{ background: color, width: '10px', height: '10px', bottom: '-5px' }} />
+      <Handle type="source" id="handle-left" position={Position.Left} style={{ background: color, width: '10px', height: '10px', left: '-5px' }} />
+      <Handle type="source" id="handle-right" position={Position.Right} style={{ background: color, width: '10px', height: '10px', right: '-5px' }} />
 
       <motion.div
         className="device-node-card"
@@ -231,41 +235,180 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
           {device.ip}
         </div>
 
-        {/* Floating HOP Badge Overlay — Absolute Positioned to prevent layout jump or node square enlargement */}
-        {activePacket && !isDisabled && (
-          <motion.div
-            initial={{ scale: 0.5, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.5, opacity: 0 }}
-            style={{
-              position: 'absolute',
-              top: '-10px',
-              right: '-10px',
-              background: '#06b6d4',
-              color: '#042f2e',
-              fontSize: '9px',
-              fontWeight: 800,
-              padding: '2px 7px',
-              borderRadius: '10px',
-              boxShadow: '0 0 10px rgba(6, 182, 212, 0.8), 0 0 20px rgba(6, 182, 212, 0.4)',
-              fontFamily: 'monospace',
-              letterSpacing: '0.05em',
-              zIndex: 20,
-              pointerEvents: 'none',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}
-          >
-            <span style={{
-              width: '5px',
-              height: '5px',
-              borderRadius: '50%',
-              background: '#042f2e',
-            }} />
-            HOP #{activePacket.currentHop + 1}
-          </motion.div>
-        )}
+        {/* ─── Animated Computer Networks Checksum & CRC Theory Popover Overlay ─── */}
+        <AnimatePresence>
+          {activePacket && !isDisabled && (
+            <motion.div
+              initial={{ scale: 0.85, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.85, opacity: 0, y: 10 }}
+              transition={{ type: 'spring', damping: 22, stiffness: 320 }}
+              style={{
+                position: 'absolute',
+                bottom: 'calc(100% + 14px)',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: '270px',
+                background: 'rgba(10, 14, 26, 0.96)',
+                backdropFilter: 'blur(16px)',
+                border: `1.5px solid ${isCorrupted ? 'rgba(239, 68, 68, 0.8)' : isSender ? 'rgba(6, 182, 212, 0.8)' : 'rgba(16, 185, 129, 0.8)'}`,
+                borderRadius: '12px',
+                padding: '10px 12px',
+                boxShadow: isCorrupted
+                  ? '0 0 25px rgba(239, 68, 68, 0.4), 0 8px 32px rgba(0,0,0,0.8)'
+                  : '0 0 25px rgba(6, 182, 212, 0.3), 0 8px 32px rgba(0,0,0,0.8)',
+                zIndex: 100,
+                textAlign: 'left',
+                pointerEvents: 'auto',
+                fontFamily: 'sans-serif',
+              }}
+            >
+              {/* Header Title Bar */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <div style={{
+                  fontSize: '10px',
+                  fontWeight: 800,
+                  color: isCorrupted ? '#f87171' : isSender ? '#22d3ee' : '#34d399',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}>
+                  <span style={{ fontSize: '12px' }}>{isCorrupted ? '⚠️' : isSender ? '⚡' : '🔍'}</span>
+                  {isSender ? 'Sender Encapsulation' : 'Receiver FCS Check'}
+                </div>
+                <span style={{
+                  fontSize: '9px',
+                  fontFamily: 'monospace',
+                  background: isSender ? 'rgba(6, 182, 212, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                  color: isSender ? '#67e8f9' : '#6ee7b7',
+                  padding: '1px 5px',
+                  borderRadius: '4px',
+                  fontWeight: 700,
+                }}>
+                  {activePacket.protocol} #{activePacket.seqNum}
+                </span>
+              </div>
+
+              {/* Encapsulation Field Values Grid */}
+              <div style={{
+                background: 'rgba(0, 0, 0, 0.4)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '8px',
+                padding: '6px 8px',
+                marginBottom: '6px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                fontFamily: 'monospace',
+                fontSize: '10px',
+              }}>
+                {/* 16-bit Internet Checksum Row */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: '#94a3b8' }}>1's Comp Checksum:</span>
+                  <span style={{ color: '#fbbf24', fontWeight: 700 }}>0x{activePacket.checksum}</span>
+                </div>
+
+                {/* CRC-32 Frame Check Sequence Row */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: '#94a3b8' }}>CRC-32 (IEEE 802.3):</span>
+                  <span style={{ color: isCorrupted ? '#f87171' : '#34d399', fontWeight: 700 }}>
+                    0x{activePacket.crc.toUpperCase()}
+                  </span>
+                </div>
+
+                {/* Encapsulated Header Field Snapshot */}
+                <div style={{ fontSize: '9px', color: '#64748b', borderTop: '1px dashed rgba(255,255,255,0.1)', paddingTop: '4px', marginTop: '2px' }}>
+                  Src: {activePacket.sourceIP} ➔ Dst: {activePacket.destIP}
+                </div>
+              </div>
+
+              {/* Error Detection & FCS Status Banner */}
+              <div style={{
+                fontSize: '9.5px',
+                fontWeight: 700,
+                padding: '4px 6px',
+                borderRadius: '6px',
+                background: isCorrupted ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.15)',
+                color: isCorrupted ? '#fca5a5' : '#6ee7b7',
+                border: `1px solid ${isCorrupted ? 'rgba(239, 68, 68, 0.4)' : 'rgba(16, 185, 129, 0.3)'}`,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                marginBottom: '6px',
+              }}>
+                <span>{isCorrupted ? '❌' : '✓'}</span>
+                <span>
+                  {isCorrupted
+                    ? 'CRC Remainder ≠ 0! Bit error detected. Frame discarded.'
+                    : isSender
+                    ? '16-bit Checksum & CRC-32 FCS generated & sealed.'
+                    : 'FCS Remainder = 0. Frame integrity verified.'}
+                </span>
+              </div>
+
+              {/* Networking Theory Details Toggle Button */}
+              <button
+                className="nodrag"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowTheory(!showTheory);
+                }}
+                onDoubleClick={(e) => e.stopPropagation()}
+                style={{
+                  width: '100%',
+                  padding: '4px',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '5px',
+                  color: '#cbd5e1',
+                  fontSize: '9px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '4px',
+                  transition: 'background 0.15s ease',
+                }}
+              >
+                <span>Networking Theory Info</span>
+                <span style={{ fontSize: '8px' }}>{showTheory ? '▲' : '▼'}</span>
+              </button>
+
+              {/* Expandable Theory Explanation Box */}
+              {showTheory && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  style={{
+                    marginTop: '6px',
+                    paddingTop: '6px',
+                    borderTop: '1px solid rgba(255,255,255,0.1)',
+                    fontSize: '9px',
+                    color: '#94a3b8',
+                    lineHeight: 1.4,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px',
+                  }}
+                >
+                  <div>
+                    <strong style={{ color: '#22d3ee' }}>Layer 3 IP Checksum:</strong> Calculated via 1's complement sum of 16-bit header words (RFC 1071). Recomputed by routers at every hop as TTL decrements.
+                  </div>
+                  <div>
+                    <strong style={{ color: '#34d399' }}>Layer 2 CRC-32 FCS:</strong> Uses generator polynomial <em>G(x) = x³² + x²⁶ + ... + 1</em>. Hardware LFSR shift registers verify binary remainder <em>R(x) = 0</em>.
+                  </div>
+                  <div>
+                    <strong style={{ color: '#fbbf24' }}>Error Detection vs Correction:</strong> Modern networks use <em>Error Detection (CRC)</em> + <em>ARQ Retransmission</em> because link BER is low enough that retransmission consumes far less bandwidth than heavy FEC codes.
+                  </div>
+                </motion.div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Default Port Flow Control on Canvas Node */}
         {connectedLinks.length > 0 && !isDisabled && (
@@ -295,6 +438,9 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
                     onClick={(e) => {
                       e.stopPropagation();
                       toggleLinkStatus(l.id);
+                    }}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
                     }}
                     style={{
                       padding: '3px 6px',
@@ -336,6 +482,14 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
           </div>
         )}
       </motion.div>
+
+      <style>{`
+        @keyframes checksum-pulse {
+          0% { transform: scale(1); opacity: 0.85; }
+          50% { transform: scale(1.08); opacity: 0.45; }
+          100% { transform: scale(1.18); opacity: 0; }
+        }
+      `}</style>
     </>
   );
 });

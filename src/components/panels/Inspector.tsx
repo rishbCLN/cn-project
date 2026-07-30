@@ -80,10 +80,10 @@ export const Inspector: React.FC = () => {
     ['CRC-32', packet.crc],
     ['CRC Valid', packet.crcValid ? '✓ PASS' : '✕ FAIL'],
     ['Status', packet.status.toUpperCase()],
-    ['Hop Count', `${packet.currentHop} / ${packet.path.length - 1}`],
+    ['Hop Count', `${packet.currentHop} / ${packet.path.length - 1} (${packet.path.length} Nodes)`],
     ['Created', new Date(packet.createdAt).toLocaleTimeString()],
     ['Delivered', packet.deliveredAt ? new Date(packet.deliveredAt).toLocaleTimeString() : '—'],
-    ['RTT', packet.deliveredAt ? formatMs(packet.deliveredAt - packet.createdAt) : '—'],
+    ['Exact RTT', packet.rttMs ? `${packet.rttMs.toFixed(2)} ms (${packet.path.length - 1} Hops)` : '—'],
   ];
 
   return (

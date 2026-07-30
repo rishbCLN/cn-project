@@ -174,18 +174,42 @@ html, body, #root {
   stroke-width: 2 !important;
 }
 .react-flow__handle {
-  width: 16px !important;
-  height: 16px !important;
-  border: 3px solid var(--bg-primary) !important;
+  width: 10px !important;
+  height: 10px !important;
+  border: 2px solid var(--bg-primary) !important;
   border-radius: 50% !important;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5), 0 0 4px currentColor !important;
-  transition: filter 0.2s ease, box-shadow 0.2s ease !important;
-  z-index: 20 !important;
-}
-.react-flow__handle:hover {
-  filter: brightness(1.3);
-  box-shadow: 0 0 16px currentColor, 0 0 30px currentColor !important;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.6), 0 0 4px currentColor !important;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease !important;
+  transform: none !important;
+  z-index: 50 !important;
   cursor: crosshair !important;
+  position: absolute !important;
+}
+
+/* Expanded invisible drop zone around the fixed dot (42px total active target area) */
+.react-flow__handle::before {
+  content: '';
+  position: absolute;
+  top: -16px;
+  left: -16px;
+  right: -16px;
+  bottom: -16px;
+  border-radius: 50%;
+  background: transparent;
+  pointer-events: all;
+}
+
+/* Visual Trigger: ONLY neon glow aura (NO scaling / NO position shift) */
+.react-flow__handle:hover,
+.react-flow__handle.connecting,
+.react-flow__handle.valid,
+.react-flow__handle-connecting,
+.react-flow__handle-valid {
+  transform: none !important;
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.4), 0 0 16px #06b6d4, 0 0 30px #06b6d4 !important;
+  border-color: #06b6d4 !important;
+  background: #06b6d4 !important;
+  z-index: 100 !important;
 }
 
 /* ─── Selection styles ─── */

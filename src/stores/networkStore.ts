@@ -349,7 +349,7 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
     const dst = devices.find(d => d.id === dstId);
     if (!src || !dst) return;
 
-    const result = createPacket(src, dst, protocol, size, devices, links, simConfig.routingAlgorithm);
+    const result = createPacket(src, dst, protocol, size, devices, links, simConfig.routingAlgorithm, simConfig);
     if (!result) {
       set(state => ({
         events: [...state.events, {

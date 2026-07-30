@@ -13,6 +13,80 @@ import { genId, simpleChecksum } from '../utils/helpers';
 let seqCounter = 0;
 
 /**
+ * Calculate exact theoretical Round Trip Time (RTT) across all nodes/hops in the path.
+ * RTT = T_forward (all hops in path) + T_return (all hops for ACK)
+ *
+ * For each hop link i along the path of N hops (N+1 nodes):
+ *   T_trans = (PacketSize * 8) / (Bandwidth_bps) * 1000 ms
+ *   T_prop  = Link_Latency_ms * LatencyMultiplier
+ *   T_queue = (Congestion% / 100) * 15 ms + Device_Load_Delay
+ *   T_proc  = 0.5 ms (Hardware switching/routing delay per node)
+ *
+ *   T_hop = T_trans + T_prop + T_queue + T_proc
+ */
+export function calculatePathRTT(
+  path: string[],
+  links: Link[],
+  packetSizeBytes: number,
+  config: SimConfig,
+  devices?: Device[]
+): {
+  rttMs: number;
+  forwardDelayMs: number;
+  returnDelayMs: number;
+  hopCount: number;
+  nodeCount: number;
+} {
+  if (!path || path.length < 2) {
+    return { rttMs: 0, forwardDelayMs: 0, returnDelayMs: 0, hopCount: 0, nodeCount: path ? path.length : 0 };
+  }
+
+  const hopCount = path.length - 1;
+  const nodeCount = path.length;
+
+  let totalForwardMs = 0;
+  let totalReturnMs = 0;
+
+  for (let i = 0; i < hopCount; i++) {
+    const fromId = path[i];
+    const toId = path[i + 1];
+
+    const link = links.find(
+      l => (l.source === fromId && l.target === toId) || (l.source === toId && l.target === fromId)
+    );
+
+    const bwMbps = link ? (link.bandwidth || 100) : 100;
+    const latencyMs = link ? (link.latency || 10) : 10;
+    const bwBps = bwMbps * 1_000_000;
+
+    const fromDev = devices?.find(d => d.id === fromId);
+    const devLoadDelay = fromDev ? (fromDev.load || 0) * 5.0 : 0;
+
+    // Forward Hop Delay (Data Payload Size)
+    const transMs = ((packetSizeBytes * 8) / bwBps) * 1000;
+    const propMs = Math.max(0.1, latencyMs * (config.latencyMultiplier || 1));
+    const queueMs = ((config.congestion || 0) / 100) * 15.0 + devLoadDelay;
+    const procMs = 0.5;
+
+    totalForwardMs += (transMs + propMs + queueMs + procMs);
+
+    // Return Hop Delay (40 Byte TCP ACK / ICMP Reply)
+    const ackTransMs = ((40 * 8) / bwBps) * 1000;
+    totalReturnMs += (ackTransMs + propMs + queueMs + procMs);
+  }
+
+  const rttMs = totalForwardMs + totalReturnMs;
+
+  return {
+    rttMs: Number(rttMs.toFixed(2)),
+    forwardDelayMs: Number(totalForwardMs.toFixed(2)),
+    returnDelayMs: Number(totalReturnMs.toFixed(2)),
+    hopCount,
+    nodeCount,
+  };
+}
+
+/**
  * Create a new packet with CRC and routing path.
  */
 export function createPacket(
@@ -23,11 +97,18 @@ export function createPacket(
   devices: Device[],
   links: Link[],
   routingAlgorithm: RoutingAlgorithm = 'dijkstra',
+  config?: SimConfig
 ): { packet: Packet; events: SimEvent[] } | null {
   const graph = buildGraph(devices, links);
   const result = findPath(graph, sourceDevice.id, destDevice.id, routingAlgorithm);
 
   if (!result) return null;
+
+  const simConf: SimConfig = config || {
+    speed: 1, packetLoss: 0, latencyMultiplier: 1, jitter: 0, corruptionRate: 0, congestion: 0, routingAlgorithm
+  };
+
+  const rttInfo = calculatePathRTT(result.path, links, size, simConf, devices);
 
   const payload = `DATA-${genId()}-${'X'.repeat(Math.max(0, size - 20))}`;
   const crc = computeCRC32(payload);
@@ -53,6 +134,7 @@ export function createPacket(
     status: 'created',
     createdAt: now,
     hopTimestamps: [now],
+    rttMs: rttInfo.rttMs,
   };
 
   const algoLabel = routingAlgorithm === 'bellman-ford' ? 'Bellman-Ford' : 'Dijkstra';
@@ -62,7 +144,7 @@ export function createPacket(
     time: now,
     type: 'packet_created',
     packetId: packet.id,
-    description: `Packet #${packet.seqNum} created: ${sourceDevice.label} (${sourceDevice.ip}) → ${destDevice.label} (${destDevice.ip}) [${protocol}] — routed via ${algoLabel} (${result.iterations} relaxations, cost ${result.totalCost.toFixed(1)})`,
+    description: `Packet #${packet.seqNum} created: ${sourceDevice.label} (${sourceDevice.ip}) → ${destDevice.label} (${destDevice.ip}) [${protocol}] — Path: ${rttInfo.hopCount} Hops across ${rttInfo.nodeCount} Nodes (Exact RTT: ${rttInfo.rttMs} ms) via ${algoLabel}`,
   }];
 
   return { packet, events };
@@ -326,7 +408,7 @@ export function processHop(
       events.push({
         id: genId(), time: now, type: 'ack_sent',
         packetId: ack.id,
-        description: `ACK sent from ${destStr} to ${srcStr} for packet #${packet.seqNum} (Seq #${updatedPacket.seqNum}, Ack #${updatedPacket.seqNum + 1}, Size 40 B) — [RTT: ~${(hopMetrics.totalHopDelayMs * 2).toFixed(1)} ms]`,
+        description: `ACK sent from ${destStr} to ${srcStr} for packet #${packet.seqNum} (Seq #${updatedPacket.seqNum}, Ack #${updatedPacket.seqNum + 1}, Size 40 B) — [Exact Path RTT: ${updatedPacket.rttMs ?? (hopMetrics.totalHopDelayMs * 2).toFixed(1)} ms across ${updatedPacket.path.length} Nodes]`,
       });
     }
   }
@@ -335,7 +417,7 @@ export function processHop(
 }
 
 /**
- * Compute fresh metrics from packet history.
+ * Compute fresh metrics from packet history using exact path RTT.
  */
 export function computeMetrics(history: Packet[]): Metrics {
   const sent = history.filter(p => !p.isAck).length;
@@ -344,15 +426,15 @@ export function computeMetrics(history: Packet[]): Metrics {
   const corrupted = history.filter(p => (p.status === 'corrupted' || p.status === 'retransmitting') && !p.isAck).length;
   const retransmissions = history.filter(p => p.retransmissionOf).length;
 
-  const deliveredPackets = history.filter(p => p.status === 'delivered' && p.deliveredAt && !p.isAck);
-  const rtts = deliveredPackets.map(p => (p.deliveredAt ?? p.createdAt) - p.createdAt);
-  const avgRTT = rtts.length > 0 ? rtts.reduce((a, b) => a + b, 0) / rtts.length : 0;
+  const deliveredPackets = history.filter(p => p.status === 'delivered' && !p.isAck);
+  const rtts = deliveredPackets.map(p => p.rttMs ?? 0).filter(r => r > 0);
+  const avgRTT = rtts.length > 0 ? Number((rtts.reduce((a, b) => a + b, 0) / rtts.length).toFixed(2)) : 0;
 
   const totalBytes = deliveredPackets.reduce((sum, p) => sum + p.size, 0);
   const timeSpan = deliveredPackets.length > 1
-    ? (Math.max(...deliveredPackets.map(p => p.deliveredAt!)) - Math.min(...deliveredPackets.map(p => p.createdAt)))
+    ? (Math.max(...deliveredPackets.map(p => p.deliveredAt! || p.createdAt)) - Math.min(...deliveredPackets.map(p => p.createdAt)))
     : 1000;
-  const throughput = (totalBytes * 8) / (timeSpan / 1000) / 1_000_000; // Mbps
+  const throughput = (totalBytes * 8) / (Math.max(100, timeSpan) / 1000) / 1_000_000; // Mbps
 
   return {
     sent,
@@ -361,8 +443,8 @@ export function computeMetrics(history: Packet[]): Metrics {
     corrupted,
     retransmissions,
     avgRTT,
-    throughput: Math.max(0, throughput),
-    deliveryRate: sent > 0 ? (delivered / sent) * 100 : 0,
-    errorRate: sent > 0 ? ((lost + corrupted) / sent) * 100 : 0,
+    throughput: Math.max(0, Number(throughput.toFixed(3))),
+    deliveryRate: sent > 0 ? Number(((delivered / sent) * 100).toFixed(1)) : 0,
+    errorRate: sent > 0 ? Number((((lost + corrupted) / sent) * 100).toFixed(1)) : 0,
   };
 }

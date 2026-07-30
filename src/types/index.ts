@@ -59,6 +59,7 @@ export interface Packet {
   hopTimestamps: number[];
   retransmissionOf?: string;
   isAck?: boolean;
+  rttMs?: number;
 }
 
 /* ─── Routing ─── */

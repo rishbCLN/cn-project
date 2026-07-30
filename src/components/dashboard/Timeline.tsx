@@ -49,7 +49,7 @@ export const Timeline: React.FC = () => {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: '8px',
-      padding: '8px 16px', maxHeight: '180px', overflowY: 'auto',
+      padding: '8px 16px', height: '100%', flex: 1, overflowY: 'auto',
     }}>
       {groupedEvents.map((group, groupIdx) => (
         <div

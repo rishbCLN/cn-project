@@ -8,6 +8,7 @@ import ReactFlow, {
   ReactFlowInstance,
   NodeTypes,
   EdgeTypes,
+  ConnectionMode,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -33,6 +34,7 @@ export const NetworkCanvas: React.FC = () => {
   const selectedDeviceId = useNetworkStore(s => s.selectedDeviceId);
   const addDevice = useNetworkStore(s => s.addDevice);
   const addLink = useNetworkStore(s => s.addLink);
+  const removeDevice = useNetworkStore(s => s.removeDevice);
   const removeLink = useNetworkStore(s => s.removeLink);
   const selectDevice = useNetworkStore(s => s.selectDevice);
   const selectLink = useNetworkStore(s => s.selectLink);
@@ -109,6 +111,10 @@ export const NetworkCanvas: React.FC = () => {
     selectDevice(node.id);
   }, [selectDevice]);
 
+  const onNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node) => {
+    removeDevice(node.id);
+  }, [removeDevice]);
+
   const onEdgeClick = useCallback((_: React.MouseEvent, edge: Edge) => {
     selectLink(edge.id);
   }, [selectLink]);
@@ -156,6 +162,7 @@ export const NetworkCanvas: React.FC = () => {
         onConnectEnd={onConnectEnd}
         isValidConnection={isValidConnection}
         onNodeClick={onNodeClick}
+        onNodeDoubleClick={onNodeDoubleClick}
         onEdgeClick={onEdgeClick}
         onEdgeDoubleClick={onEdgeDoubleClick}
         onPaneClick={onPaneClick}
@@ -164,6 +171,8 @@ export const NetworkCanvas: React.FC = () => {
         onInit={(instance) => { rfInstance.current = instance; }}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        connectionMode={ConnectionMode.Loose}
+        connectionRadius={60}
         fitView
         snapToGrid
         snapGrid={[15, 15]}
