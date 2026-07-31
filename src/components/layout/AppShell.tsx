@@ -1,7 +1,6 @@
 import React from 'react';
 import { TopBar } from './TopBar';
 import { Sidebar } from './Sidebar';
-import { BottomBar } from './BottomBar';
 import { NetworkCanvas } from '../canvas/NetworkCanvas';
 import { Notifications } from '../events/Notifications';
 import { DevicePanel } from '../panels/DevicePanel';
@@ -293,7 +292,6 @@ export const AppShell: React.FC = () => {
         </div>
       )}
 
-      <BottomBar />
       <Notifications />
     </div>
   );
