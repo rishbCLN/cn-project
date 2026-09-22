@@ -16,9 +16,9 @@ import { useUIStore } from '../../stores/uiStore';
 import { motion } from 'framer-motion';
 
 const panelTabs = [
-  { key: 'send', label: '🚀 Send' },
-  { key: 'inspector', label: '🔍 Inspect' },
-  { key: 'stats', label: '📊 Stats' },
+  { key: 'send', label: 'TX' },
+  { key: 'inspector', label: 'INSPECT' },
+  { key: 'stats', label: 'STATS' },
 ] as const;
 
 export const AppShell: React.FC = () => {
@@ -86,7 +86,7 @@ export const AppShell: React.FC = () => {
   };
 
   return (
-    <div style={{
+    <div className="lab-bg" style={{
       display: 'flex', flexDirection: 'column',
       height: '100vh', width: '100vw',
       background: 'var(--bg-primary)',
@@ -127,16 +127,17 @@ export const AppShell: React.FC = () => {
                   style={{
                     flex: 1,
                     padding: '10px 4px',
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    background: 'transparent',
+                    fontSize: '10.5px',
+                    fontWeight: 700,
+                    letterSpacing: '0.14em',
+                    background: isActive ? 'var(--signal-dim)' : 'transparent',
                     border: 'none',
                     borderBottom: `2px solid ${
-                      isActive ? 'var(--accent-cyan)' : 'transparent'
+                      isActive ? 'var(--signal)' : 'transparent'
                     }`,
-                    color: isActive ? 'var(--accent-cyan)' : 'var(--text-muted)',
+                    color: isActive ? 'var(--signal)' : 'var(--text-muted)',
                     cursor: 'pointer',
-                    fontFamily: 'Inter, sans-serif',
+                    fontFamily: 'JetBrains Mono, monospace',
                     transition: 'all 0.2s',
                   }}
                 >
@@ -212,13 +213,16 @@ export const AppShell: React.FC = () => {
                     onClick={() => setTimelineView(v.key)}
                     style={{
                       padding: '3px 10px',
-                      borderRadius: '5px',
+                      borderRadius: '3px',
                       border: 'none',
-                      fontSize: '10px',
+                      fontSize: '9.5px',
                       fontWeight: 700,
+                      letterSpacing: '0.1em',
+                      textTransform: 'uppercase',
+                      fontFamily: 'JetBrains Mono, monospace',
                       cursor: 'pointer',
-                      background: timelineView === v.key ? 'var(--accent-cyan)' : 'transparent',
-                      color: timelineView === v.key ? 'white' : 'var(--text-muted)',
+                      background: timelineView === v.key ? 'var(--signal)' : 'transparent',
+                      color: timelineView === v.key ? '#0c0d0f' : 'var(--text-muted)',
                       transition: 'all 0.15s',
                     }}
                   >
@@ -226,16 +230,15 @@ export const AppShell: React.FC = () => {
                   </button>
                 ))}
               </div>
-              <span style={{
+              <span className="tag" style={{
                 fontSize: '9px',
-                fontFamily: 'monospace',
                 background: 'rgba(255, 255, 255, 0.06)',
-                color: 'var(--accent-cyan)',
+                color: 'var(--signal)',
                 padding: '1px 6px',
-                borderRadius: '4px',
-                fontWeight: 700,
+                borderRadius: '3px',
+                letterSpacing: '0.08em',
               }}>
-                {events.length} events
+                {events.length} EVT
               </span>
             </div>
 

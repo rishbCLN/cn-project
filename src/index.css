@@ -1,24 +1,36 @@
-/* ─── Google Font ─── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+/* ─── Type: technical display + monospace data (Signal Lab identity) ─── */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap');
 
 @import "tailwindcss";
 
 /* ─── CSS Custom Properties ─── */
+/*
+ * "Signal Lab" theme — a warm-graphite network diagnostics instrument.
+ * Deliberately NOT the generic navy+cyan glass look: warm neutral darks,
+ * paper-toned ink, hairline rules, sharp instrument corners, an amber signal
+ * spark for identity, and cyan kept as the secondary data-signal accent.
+ * All semantic colors (protocol / traffic / status) are preserved so the
+ * visualization logic keeps its meaning.
+ */
 :root {
-  --bg-primary: #0a0e1a;
-  --bg-secondary: #111827;
-  --bg-tertiary: #1a2035;
-  --bg-glass: rgba(17, 24, 39, 0.65);
-  --bg-glass-hover: rgba(17, 24, 39, 0.8);
-  --border-glass: rgba(255, 255, 255, 0.08);
-  --border-glass-hover: rgba(255, 255, 255, 0.15);
+  --bg-primary: #0c0d0f;      /* graphite, faintly warm */
+  --bg-secondary: #131417;
+  --bg-tertiary: #1b1d21;
+  --bg-glass: #131417;
+  --bg-glass-hover: #1b1d21;
+  --border-glass: rgba(236, 232, 225, 0.10);
+  --border-glass-hover: rgba(236, 232, 225, 0.22);
 
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-primary: #ece8e1;    /* warm paper ink */
+  --text-secondary: #a5a099;
+  --text-muted: #6d6a63;
+
+  /* Identity spark — used for brand + section rules + primary chrome */
+  --signal: #ffb454;
+  --signal-dim: rgba(255, 180, 84, 0.14);
 
   --accent-blue: #3b82f6;
-  --accent-cyan: #06b6d4;
+  --accent-cyan: #21c7dc;     /* secondary data-signal (refined) */
   --accent-purple: #8b5cf6;
   --accent-green: #10b981;
   --accent-yellow: #f59e0b;
@@ -36,18 +48,22 @@
   --traffic-medium: #f59e0b;
   --traffic-high: #ef4444;
 
-  --shadow-glow: 0 0 30px rgba(59, 130, 246, 0.15);
-  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.4);
-  --shadow-float: 0 8px 40px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 30px rgba(255, 180, 84, 0.10);
+  --shadow-card: 0 2px 0 rgba(0, 0, 0, 0.5), 0 10px 30px rgba(0, 0, 0, 0.45);
+  --shadow-float: 0 14px 46px rgba(0, 0, 0, 0.6);
 
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
+  /* Sharp instrument corners (was rounded-2xl slop) */
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
 
-  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --transition-fast: 130ms cubic-bezier(0.2, 0, 0, 1);
+  --transition-base: 220ms cubic-bezier(0.2, 0, 0, 1);
+  --transition-slow: 380ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 /* ─── Base Reset ─── */
@@ -63,34 +79,100 @@ html, body, #root {
   height: 100%;
   width: 100%;
   overflow: hidden;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-family: var(--font-display);
   background: var(--bg-primary);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ─── Scrollbar ─── */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Monospace is the native language of a packet analyzer — used for all data. */
+kbd, code, pre, .mono { font-family: var(--font-mono); }
+
+/* ─── App ambient texture: hairline engineering grid + vignette ─── */
+.lab-bg::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    linear-gradient(rgba(236, 232, 225, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(236, 232, 225, 0.022) 1px, transparent 1px);
+  background-size: 26px 26px;
+  mask-image: radial-gradient(ellipse 120% 100% at 50% 0%, #000 55%, transparent 100%);
 }
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+.lab-bg::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 90% 60% at 50% -10%, rgba(255, 180, 84, 0.05), transparent 60%),
+    radial-gradient(circle at 50% 120%, rgba(33, 199, 220, 0.05), transparent 55%);
 }
 
-/* ─── Glass Card ─── */
+/* Static CRT-style scanlines (no animation — safe under reduced motion). */
+.scanlines {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.16) 3px
+  );
+}
+
+/* ─── Instrument panel treatment: hairline frame + corner ticks ─── */
+.instrument {
+  position: relative;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+}
+.instrument::before,
+.instrument::after {
+  content: '';
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--signal);
+  opacity: 0.55;
+  pointer-events: none;
+}
+.instrument::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+.instrument::after  { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+
+/* Uppercase mono micro-label used across panel headers */
+.tag {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+}
+
+/* ─── Scrollbar (thin, squared, instrument-style) ─── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.25);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(236, 232, 225, 0.14);
+  border-radius: 0;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--signal);
+  background-clip: padding-box;
+}
+
+/* ─── Glass Card (now a solid instrument surface) ─── */
 .glass {
   background: var(--bg-glass);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
@@ -165,7 +247,7 @@ html, body, #root {
 }
 .react-flow__controls button:hover {
   background: var(--bg-tertiary) !important;
-  color: var(--text-primary) !important;
+  color: var(--signal) !important;
 }
 .react-flow__controls button svg {
   fill: currentColor !important;
@@ -206,73 +288,74 @@ html, body, #root {
 .react-flow__handle-connecting,
 .react-flow__handle-valid {
   transform: none !important;
-  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.4), 0 0 16px #06b6d4, 0 0 30px #06b6d4 !important;
-  border-color: #06b6d4 !important;
-  background: #06b6d4 !important;
+  box-shadow: 0 0 0 3px rgba(255, 180, 84, 0.4), 0 0 16px #ffb454, 0 0 30px #ffb454 !important;
+  border-color: #ffb454 !important;
+  background: #ffb454 !important;
   z-index: 100 !important;
 }
 
 /* ─── Selection styles ─── */
 .react-flow__node.selected .device-node-card {
-  border-color: var(--accent-cyan) !important;
-  box-shadow: 0 0 20px rgba(6, 182, 212, 0.3) !important;
+  border-color: var(--signal) !important;
+  box-shadow: 0 0 0 1px var(--signal), 0 0 22px rgba(255, 180, 84, 0.3) !important;
 }
 
-/* ─── Custom input styles ─── */
+/* ─── Custom input styles (squared, mono data entry) ─── */
 input[type="text"],
 input[type="number"],
 select {
-  background: var(--bg-tertiary);
+  background: var(--bg-primary);
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   padding: 6px 10px;
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
   outline: none;
-  transition: border-color var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   width: 100%;
 }
 input[type="text"]:focus,
 input[type="number"]:focus,
 select:focus {
-  border-color: var(--accent-cyan);
-  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.15);
+  border-color: var(--signal);
+  box-shadow: 0 0 0 2px var(--signal-dim);
 }
 
 select {
   cursor: pointer;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a5a099' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 8px center;
   padding-right: 28px;
 }
 
-/* ─── Range Slider ─── */
+/* ─── Range Slider (squared groove + notch thumb) ─── */
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 4px;
-  background: var(--bg-tertiary);
-  border-radius: 2px;
+  height: 3px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-glass);
+  border-radius: 0;
   outline: none;
   cursor: pointer;
 }
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--accent-cyan);
-  box-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
+  width: 8px;
+  height: 16px;
+  border-radius: 1px;
+  background: var(--signal);
+  box-shadow: 0 0 8px rgba(255, 180, 84, 0.4);
   cursor: pointer;
   transition: transform var(--transition-fast);
 }
 input[type="range"]::-webkit-slider-thumb:hover {
-  transform: scale(1.2);
+  transform: scaleY(1.15);
 }
 
 /* ─── Toast Notifications ─── */

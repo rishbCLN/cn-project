@@ -183,11 +183,20 @@ export const NetworkCanvas: React.FC = () => {
         defaultEdgeOptions={{ type: 'network' }}
         proOptions={{ hideAttribution: true }}
       >
+        {/* Layered engineering grid: fine warm plotting paper + coarse rule */}
         <Background
-          variant={BackgroundVariant.Dots}
-          gap={20}
-          size={1}
-          color="rgba(255,255,255,0.04)"
+          id="grid-fine"
+          variant={BackgroundVariant.Lines}
+          gap={26}
+          lineWidth={1}
+          color="rgba(236,232,225,0.035)"
+        />
+        <Background
+          id="grid-coarse"
+          variant={BackgroundVariant.Lines}
+          gap={130}
+          lineWidth={1}
+          color="rgba(255,180,84,0.05)"
         />
         <Controls
           showInteractive={false}

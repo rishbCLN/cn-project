@@ -137,36 +137,53 @@ export const TopBar: React.FC = () => {
   const speeds = [0.25, 0.5, 1, 2, 4];
 
   return (
-    <div style={{
+    <div className="scanlines" style={{
       height: '52px',
       background: 'var(--bg-secondary)',
       borderBottom: '1px solid var(--border-glass)',
+      boxShadow: 'inset 0 -1px 0 rgba(255,180,84,0.12)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
       padding: '0 16px',
       zIndex: 50,
       gap: '12px',
+      position: 'relative',
     }}>
       {/* ─── Left Section: Logo + Playback & Speed Controls + Stats ─── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
-        {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+        {/* Brand — bracketed instrument wordmark */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '9px', flexShrink: 0 }}>
           <div style={{
-            width: '28px', height: '28px',
-            borderRadius: '8px',
-            background: 'linear-gradient(135deg, #06b6d4, #3b82f6)',
+            position: 'relative',
+            width: '30px', height: '30px',
+            border: '1px solid var(--signal)',
+            borderRadius: '3px',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '14px', fontWeight: 900, color: 'white',
+            background: 'var(--signal-dim)',
+            boxShadow: 'inset 0 0 12px rgba(255,180,84,0.18)',
           }}>
-            P
+            {/* signal waveform glyph */}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffb454" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 12h4l2-7 4 14 2-7h6" />
+            </svg>
           </div>
-          <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-            PacketFlow
-          </span>
-          <span style={{ fontSize: '15px', fontWeight: 300, color: 'var(--text-muted)' }}>
-            Studio
-          </span>
+          <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1 }}>
+            <span style={{
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)',
+              letterSpacing: '0.02em',
+            }}>
+              PACKETFLOW
+            </span>
+            <span style={{
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: '8px', fontWeight: 600, color: 'var(--signal)',
+              letterSpacing: '0.42em', marginTop: '2px',
+            }}>
+              STUDIO·LAB
+            </span>
+          </div>
         </div>
 
         {/* Vertical Divider */}
@@ -187,7 +204,8 @@ export const TopBar: React.FC = () => {
         {/* Speed Selector Pills */}
         <div style={{
           display: 'flex', gap: '2px', alignItems: 'center',
-          background: 'var(--bg-tertiary)', borderRadius: '8px', padding: '2px', flexShrink: 0
+          background: 'var(--bg-tertiary)', borderRadius: '4px', padding: '2px', flexShrink: 0,
+          border: '1px solid var(--border-glass)',
         }}>
           {speeds.map(s => (
             <motion.button
@@ -202,8 +220,8 @@ export const TopBar: React.FC = () => {
                 fontFamily: 'monospace',
                 cursor: 'pointer',
                 border: 'none',
-                background: simConfig.speed === s ? 'var(--accent-cyan)' : 'transparent',
-                color: simConfig.speed === s ? 'white' : 'var(--text-muted)',
+                background: simConfig.speed === s ? 'var(--signal)' : 'transparent',
+                color: simConfig.speed === s ? '#0c0d0f' : 'var(--text-muted)',
                 transition: 'all 0.15s',
               }}
             >
@@ -256,20 +274,21 @@ export const TopBar: React.FC = () => {
           }}
           style={{
             background: activePreset ? 'rgba(16, 185, 129, 0.22)' : 'rgba(16, 185, 129, 0.1)',
-            border: `1.5px solid ${activePreset ? '#10b981' : 'rgba(16, 185, 129, 0.3)'}`,
-            boxShadow: activePreset ? '0 0 14px rgba(16, 185, 129, 0.3)' : 'none',
-            borderRadius: '8px',
+            border: `1px solid ${activePreset ? '#10b981' : 'rgba(16, 185, 129, 0.3)'}`,
+            boxShadow: activePreset ? '0 0 14px rgba(16, 185, 129, 0.25)' : 'none',
+            borderRadius: '4px',
             padding: '5px 10px',
-            fontSize: '11.5px',
+            fontSize: '11px',
             fontWeight: 700,
-            color: '#10b981',
+            color: '#34d399',
             cursor: 'pointer',
-            fontFamily: 'Inter, sans-serif',
+            fontFamily: 'JetBrains Mono, monospace',
             outline: 'none',
+            width: 'auto',
             transition: 'all 0.25s ease',
           }}
         >
-          <option value="" disabled>⚡ Select Demo Preset…</option>
+          <option value="" disabled>▚ LOAD PRESET…</option>
           <option value="congestion" style={{ background: '#111827', color: '#f8fafc' }}>⚡ Bottleneck & Queue Delay</option>
           <option value="retransmission" style={{ background: '#111827', color: '#f8fafc' }}>⚡ Loss & TCP Retransmission</option>
           <option value="mesh_routing" style={{ background: '#111827', color: '#f8fafc' }}>⚡ Dijkstra Multi-Hop Routing</option>
@@ -310,10 +329,10 @@ const ControlBtn: React.FC<{
     title={label}
     style={{
       width: '28px', height: '28px',
-      borderRadius: '7px',
-      border: 'none',
-      background: accent ? 'var(--accent-cyan)' : 'var(--bg-tertiary)',
-      color: accent ? 'white' : 'var(--text-secondary)',
+      borderRadius: '3px',
+      border: `1px solid ${accent ? 'var(--signal)' : 'var(--border-glass)'}`,
+      background: accent ? 'var(--signal)' : 'var(--bg-tertiary)',
+      color: accent ? '#0c0d0f' : 'var(--text-secondary)',
       fontSize: '13px',
       cursor: 'pointer',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -343,15 +362,16 @@ const TopBarBtn: React.FC<{
     whileHover={{ scale: 1.05 }}
     whileTap={{ scale: 0.95 }}
     style={{
-      background: active ? 'rgba(6, 182, 212, 0.15)' : 'var(--bg-tertiary)',
-      border: `1px solid ${active ? 'rgba(6, 182, 212, 0.3)' : 'var(--border-glass)'}`,
-      borderRadius: '7px',
+      background: active ? 'var(--signal-dim)' : 'var(--bg-tertiary)',
+      border: `1px solid ${active ? 'var(--signal)' : 'var(--border-glass)'}`,
+      borderRadius: '3px',
       padding: '5px 10px',
-      fontSize: '11.5px',
-      color: active ? '#06b6d4' : 'var(--text-secondary)',
+      fontSize: '11px',
+      color: active ? 'var(--signal)' : 'var(--text-secondary)',
       cursor: 'pointer',
-      fontFamily: 'Inter, sans-serif',
-      fontWeight: 500,
+      fontFamily: 'JetBrains Mono, monospace',
+      fontWeight: 600,
+      letterSpacing: '0.02em',
       transition: 'all 0.2s',
     }}
   >

@@ -167,7 +167,6 @@ const DeviceNode: React.FC<NodeProps> = memo(({ data, selected }) => {
         initial={{ scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         style={{
-          backdropFilter: 'blur(12px)',
           textAlign: 'center',
           transition: 'border-color 0.2s, box-shadow 0.3s, background-color 0.3s',
           position: 'relative',
