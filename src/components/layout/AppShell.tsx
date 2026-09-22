@@ -3,12 +3,14 @@ import { TopBar } from './TopBar';
 import { Sidebar } from './Sidebar';
 import { NetworkCanvas } from '../canvas/NetworkCanvas';
 import { Notifications } from '../events/Notifications';
+import { KeyboardShortcuts } from '../events/KeyboardShortcuts';
 import { DevicePanel } from '../panels/DevicePanel';
 import { LinkPanel } from '../panels/LinkPanel';
 import { SendPacketPanel } from '../panels/SendPacket';
 import { Inspector } from '../panels/Inspector';
 import { StatsPanel } from '../dashboard/StatsPanel';
 import { Timeline } from '../dashboard/Timeline';
+import { SequenceDiagram } from '../dashboard/SequenceDiagram';
 import { useNetworkStore } from '../../stores/networkStore';
 import { useUIStore } from '../../stores/uiStore';
 import { motion } from 'framer-motion';
@@ -28,6 +30,8 @@ export const AppShell: React.FC = () => {
   const setPanel = useUIStore(s => s.setPanel);
   const showTimeline = useUIStore(s => s.showTimeline);
   const toggleTimeline = useUIStore(s => s.toggleTimeline);
+  const timelineView = useUIStore(s => s.timelineView);
+  const setTimelineView = useUIStore(s => s.setTimelineView);
 
   const [timelineHeight, setTimelineHeight] = React.useState(200);
   const [isResizing, setIsResizing] = React.useState(false);
@@ -128,9 +132,9 @@ export const AppShell: React.FC = () => {
                     background: 'transparent',
                     border: 'none',
                     borderBottom: `2px solid ${
-                      effectivePanel === tab.key ? 'var(--accent-cyan)' : 'transparent'
+                      isActive ? 'var(--accent-cyan)' : 'transparent'
                     }`,
-                    color: effectivePanel === tab.key ? 'var(--accent-cyan)' : 'var(--text-muted)',
+                    color: isActive ? 'var(--accent-cyan)' : 'var(--text-muted)',
                     cursor: 'pointer',
                     fontFamily: 'Inter, sans-serif',
                     transition: 'all 0.2s',
@@ -194,15 +198,34 @@ export const AppShell: React.FC = () => {
             background: 'rgba(10, 14, 26, 0.5)',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{
-                fontSize: '10px',
-                fontWeight: 800,
-                color: 'var(--text-muted)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em',
+              {/* View switcher: Event Log ↔ Sequence Diagram */}
+              <div style={{
+                display: 'flex', gap: '2px', background: 'var(--bg-tertiary)',
+                borderRadius: '7px', padding: '2px',
               }}>
-                Event Timeline
-              </span>
+                {([
+                  { key: 'log' as const, label: 'Event Log' },
+                  { key: 'sequence' as const, label: 'Sequence' },
+                ]).map(v => (
+                  <button
+                    key={v.key}
+                    onClick={() => setTimelineView(v.key)}
+                    style={{
+                      padding: '3px 10px',
+                      borderRadius: '5px',
+                      border: 'none',
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      background: timelineView === v.key ? 'var(--accent-cyan)' : 'transparent',
+                      color: timelineView === v.key ? 'white' : 'var(--text-muted)',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
               <span style={{
                 fontSize: '9px',
                 fontFamily: 'monospace',
@@ -287,12 +310,13 @@ export const AppShell: React.FC = () => {
 
           {/* Timeline Scrollable Content */}
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <Timeline />
+            {timelineView === 'log' ? <Timeline /> : <SequenceDiagram />}
           </div>
         </div>
       )}
 
       <Notifications />
+      <KeyboardShortcuts />
     </div>
   );
 };

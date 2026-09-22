@@ -45,6 +45,21 @@ export function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`;
 }
 
+/**
+ * Stable MAC address for a device. Uses the device's real MAC when present
+ * (presets set them); otherwise derives a deterministic locally-administered
+ * address from the id, so the SAME device always shows the SAME MAC across the
+ * Inspector, ARP table, and CAM table.
+ */
+export function deviceMac(device: { id: string; mac?: string }): string {
+  if (device.mac) return device.mac;
+  let h = 0;
+  for (let i = 0; i < device.id.length; i++) h = (h * 31 + device.id.charCodeAt(i)) >>> 0;
+  const b = (n: number) => ((h >>> (n * 8)) & 0xff).toString(16).padStart(2, '0').toUpperCase();
+  // 02: prefix = locally administered, unicast.
+  return `02:${b(0)}:${b(1)}:${b(2)}:${b(3)}:${(((h >>> 24) ^ 0x5a) & 0xff).toString(16).padStart(2, '0').toUpperCase()}`;
+}
+
 /* ─── Checksum (simple hex hash of string) ─── */
 export function simpleChecksum(data: string): string {
   let hash = 0;

@@ -1,14 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useNetworkStore } from '../../stores/networkStore';
 import { Button } from '../ui/Button';
 import { Protocol } from '../../types';
 import { PROTOCOL_COLORS, PROTOCOL_BG_COLORS } from '../../utils/colors';
+import { buildGraph, findPath } from '../../engine/routing';
 
 const PROTOCOLS: Protocol[] = ['TCP', 'UDP', 'ICMP', 'DNS'];
 
 export const SendPacketPanel: React.FC = () => {
   const devices = useNetworkStore(s => s.devices);
+  const links = useNetworkStore(s => s.links);
+  const routingAlgorithm = useNetworkStore(s => s.simConfig.routingAlgorithm);
   const sendPacket = useNetworkStore(s => s.sendPacket);
   const startSim = useNetworkStore(s => s.startSim);
   const activeDevices = devices.filter(d => d.status === 'active');
@@ -18,7 +21,26 @@ export const SendPacketPanel: React.FC = () => {
   const [protocol, setProtocol] = useState<Protocol>('TCP');
   const [size, setSize] = useState(512);
 
-  const canSend = srcId && dstId && srcId !== dstId;
+  // Live route preview: recompute the shortest path whenever the endpoints,
+  // topology, or algorithm change — so users see reachability + the exact hop
+  // chain before committing to a send.
+  const preview = useMemo(() => {
+    if (!srcId || !dstId || srcId === dstId) return null;
+    const graph = buildGraph(devices, links);
+    const result = findPath(graph, srcId, dstId, routingAlgorithm);
+    if (!result) return { reachable: false as const };
+    const labels = result.path.map(
+      id => devices.find(d => d.id === id)?.label ?? '?'
+    );
+    return {
+      reachable: true as const,
+      labels,
+      hops: result.path.length - 1,
+      cost: result.totalCost,
+    };
+  }, [srcId, dstId, devices, links, routingAlgorithm]);
+
+  const canSend = Boolean(srcId && dstId && srcId !== dstId && preview?.reachable);
 
   const handleSend = () => {
     if (!canSend) return;
@@ -126,6 +148,53 @@ export const SendPacketPanel: React.FC = () => {
             onChange={e => setSize(parseInt(e.target.value))}
           />
         </div>
+
+        {/* Live route preview */}
+        {preview && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            style={{
+              borderRadius: '8px',
+              padding: '10px 12px',
+              background: preview.reachable ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
+              border: `1px solid ${preview.reachable ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+            }}
+          >
+            {preview.reachable ? (
+              <>
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  marginBottom: '6px',
+                }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#34d399' }}>
+                    ✓ Reachable
+                  </span>
+                  <span style={{ fontSize: '10.5px', fontFamily: 'monospace', color: 'var(--text-muted)' }}>
+                    {preview.hops} hop{preview.hops === 1 ? '' : 's'} · cost {preview.cost}
+                  </span>
+                </div>
+                <div style={{
+                  fontSize: '11px', fontFamily: 'monospace', color: 'var(--text-secondary)',
+                  lineHeight: 1.5, wordBreak: 'break-word',
+                }}>
+                  {preview.labels.map((l, i) => (
+                    <React.Fragment key={i}>
+                      <span style={{ color: i === 0 || i === preview.labels.length - 1 ? 'var(--accent-cyan)' : 'var(--text-secondary)' }}>
+                        {l}
+                      </span>
+                      {i < preview.labels.length - 1 && <span style={{ color: 'var(--text-muted)' }}> → </span>}
+                    </React.Fragment>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <span style={{ fontSize: '11px', fontWeight: 600, color: '#f87171' }}>
+                ✕ No route — these devices aren't connected
+              </span>
+            )}
+          </motion.div>
+        )}
 
         {/* Send Button */}
         <Button

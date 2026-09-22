@@ -1,24 +1,55 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
-import {
-  LineChart, Line, AreaChart, Area,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-} from 'recharts';
 import { useNetworkStore } from '../../stores/networkStore';
 import { formatMs } from '../../utils/helpers';
+import { MiniChart } from '../ui/MiniChart';
 
 export const StatsPanel: React.FC = () => {
   const metrics = useNetworkStore(s => s.metrics);
   const metricsHistory = useNetworkStore(s => s.metricsHistory);
+  const links = useNetworkStore(s => s.links);
+  const packetHistory = useNetworkStore(s => s.packetHistory);
+  const simConfig = useNetworkStore(s => s.simConfig);
 
-  // Prepare chart data (last 30 snapshots)
-  const chartData = metricsHistory.slice(-30).map((snap, i) => ({
-    idx: i,
-    rtt: snap.metrics.avgRTT,
-    loss: snap.metrics.errorRate,
-    throughput: snap.metrics.throughput,
-    delivery: snap.metrics.deliveryRate,
-  }));
+  // Prepare chart data series (last 30 snapshots)
+  const recent = metricsHistory.slice(-30);
+  const rttSeries = recent.map(s => s.metrics.avgRTT);
+  const lossSeries = recent.map(s => s.metrics.errorRate);
+  const throughputSeries = recent.map(s => s.metrics.throughput);
+  const hasChartData = recent.length > 1;
+
+  // ─── Real network-theory telemetry, derived from the actual topology and
+  // delivered traffic (NOT hardcoded). Uses the same formulas as the engine's
+  // per-hop model so the numbers here reconcile with the event log. ───
+  const theory = useMemo(() => {
+    const activeLinks = links.filter(l => l.status === 'active');
+    const mean = (xs: number[], fb: number) =>
+      xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : fb;
+
+    const avgBwMbps = mean(activeLinks.map(l => l.bandwidth), 100);
+    const avgLatMs = mean(activeLinks.map(l => l.latency), 10);
+    const delivered = packetHistory.filter(p => p.status === 'delivered' && !p.isAck);
+    const avgSize = mean(delivered.map(p => p.size), 512);
+
+    const bwBps = avgBwMbps * 1_000_000;
+    // T_trans = L / R
+    const transMs = (avgSize * 8) / bwBps * 1000;
+    // T_prop = link latency × global multiplier
+    const propMs = Math.max(0.1, avgLatMs * simConfig.latencyMultiplier);
+    // T_queue = congestion share of a 15 ms queue budget (engine model)
+    const queueMs = (simConfig.congestion / 100) * 15;
+    // BDP = R × RTT (bits); RTT approximated as 2×(T_trans+T_prop+T_queue)
+    const rttSec = (2 * (transMs + propMs + queueMs)) / 1000;
+    const bdpKbits = (bwBps * rttSec) / 1000;
+    // Stop-and-wait channel efficiency η = T_trans / (T_trans + 2·T_prop)
+    const efficiency = (transMs / (transMs + 2 * propMs)) * 100;
+
+    return {
+      avgBwMbps, avgLatMs, avgSize,
+      transMs, propMs, queueMs, bdpKbits, efficiency,
+      sampled: delivered.length,
+    };
+  }, [links, packetHistory, simConfig.latencyMultiplier, simConfig.congestion]);
 
   return (
     <motion.div
@@ -56,6 +87,14 @@ export const StatsPanel: React.FC = () => {
         }}>
           Live Network Theory Telemetry
         </div>
+        {/* Basis line — makes clear these are derived from real state */}
+        <div style={{
+          fontSize: '9.5px', color: 'var(--text-muted)', fontFamily: 'monospace',
+          marginBottom: '8px', lineHeight: 1.5,
+        }}>
+          Basis: avg link {theory.avgBwMbps.toFixed(0)} Mbps · {theory.avgLatMs.toFixed(0)} ms · avg packet{' '}
+          {theory.avgSize.toFixed(0)} B{theory.sampled > 0 ? ` · ${theory.sampled} delivered` : ' (defaults)'}
+        </div>
         <div style={{
           background: 'rgba(10, 14, 26, 0.95)',
           border: '1px solid var(--border-glass)',
@@ -69,113 +108,73 @@ export const StatsPanel: React.FC = () => {
           <FormulaRow
             name="Transmission Delay (T_trans)"
             formula="L / R (Packet Size / Bandwidth)"
-            value={`${((512 * 8) / (100 * 1000)).toFixed(3)} ms`}
+            value={`${theory.transMs.toFixed(3)} ms`}
             color="#3b82f6"
           />
           <FormulaRow
             name="Propagation Delay (T_prop)"
-            formula="Distance / Speed"
-            value={formatMs(metrics.avgRTT > 0 ? metrics.avgRTT * 0.45 : 10)}
+            formula="Latency × multiplier"
+            value={formatMs(theory.propMs)}
             color="#f59e0b"
           />
           <FormulaRow
             name="Queueing Delay (T_queue)"
-            formula="[ρ / (1 - ρ)] × T_trans"
-            value={formatMs(metrics.avgRTT > 0 ? metrics.avgRTT * 0.1 : 0.5)}
+            formula="(Congestion %) × 15 ms budget"
+            value={formatMs(theory.queueMs)}
             color="#8b5cf6"
           />
           <FormulaRow
             name="Bandwidth-Delay Product (BDP)"
             formula="Bandwidth × RTT"
-            value={`${((100 * (metrics.avgRTT || 10)) / 1000).toFixed(2)} Kbits`}
+            value={`${theory.bdpKbits.toFixed(2)} Kbits`}
             color="#06b6d4"
           />
           <FormulaRow
             name="Channel Efficiency (η)"
             formula="T_trans / (T_trans + 2·T_prop)"
-            value={`${Math.max(1.2, Math.min(99.4, (0.041 / (0.041 + 2 * (metrics.avgRTT ? metrics.avgRTT * 0.45 : 10)) * 100))).toFixed(2)}%`}
+            value={`${theory.efficiency.toFixed(2)}%`}
             color="#10b981"
           />
         </div>
       </div>
 
       {/* ─── Latency Chart ─── */}
-      {chartData.length > 1 && (
+      {hasChartData && (
         <>
           <ChartSection title="Latency (RTT)">
-            <ResponsiveContainer width="100%" height={100}>
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis hide />
-                <YAxis hide />
-                <Tooltip
-                  contentStyle={{
-                    background: 'var(--bg-secondary)',
-                    border: '1px solid var(--border-glass)',
-                    borderRadius: '8px',
-                    fontSize: '11px',
-                  }}
-                  formatter={(v: any) => [typeof v === 'number' ? `${v.toFixed(1)} ms` : String(v), 'RTT']}
-                />
-                <Line
-                  type="monotone" dataKey="rtt" stroke="#06b6d4"
-                  strokeWidth={2} dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            <MiniChart
+              data={rttSeries}
+              color="#06b6d4"
+              variant="line"
+              format={(v) => `${v.toFixed(1)} ms`}
+            />
           </ChartSection>
 
           {/* ─── Error Rate Chart ─── */}
           <ChartSection title="Error Rate">
-            <ResponsiveContainer width="100%" height={100}>
-              <AreaChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis hide />
-                <YAxis hide />
-                <Tooltip
-                  contentStyle={{
-                    background: 'var(--bg-secondary)',
-                    border: '1px solid var(--border-glass)',
-                    borderRadius: '8px',
-                    fontSize: '11px',
-                  }}
-                  formatter={(v: any) => [typeof v === 'number' ? `${v.toFixed(1)}%` : String(v), 'Error Rate']}
-                />
-                <Area
-                  type="monotone" dataKey="loss" stroke="#ef4444"
-                  fill="rgba(239,68,68,0.15)" strokeWidth={2}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+            <MiniChart
+              data={lossSeries}
+              color="#ef4444"
+              variant="area"
+              min={0}
+              format={(v) => `${v.toFixed(1)}%`}
+            />
           </ChartSection>
 
           {/* ─── Throughput Chart ─── */}
           <ChartSection title="Throughput">
-            <ResponsiveContainer width="100%" height={100}>
-              <AreaChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis hide />
-                <YAxis hide />
-                <Tooltip
-                  contentStyle={{
-                    background: 'var(--bg-secondary)',
-                    border: '1px solid var(--border-glass)',
-                    borderRadius: '8px',
-                    fontSize: '11px',
-                  }}
-                  formatter={(v: any) => [typeof v === 'number' ? `${v.toFixed(2)} Mbps` : String(v), 'Throughput']}
-                />
-                <Area
-                  type="monotone" dataKey="throughput" stroke="#10b981"
-                  fill="rgba(16,185,129,0.15)" strokeWidth={2}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+            <MiniChart
+              data={throughputSeries}
+              color="#10b981"
+              variant="area"
+              min={0}
+              format={(v) => `${v.toFixed(2)} Mbps`}
+            />
           </ChartSection>
         </>
       )}
 
-      {chartData.length <= 1 && (
+      {!hasChartData && (
         <div style={{
           fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center',
           padding: '24px', background: 'var(--bg-tertiary)', borderRadius: '10px',

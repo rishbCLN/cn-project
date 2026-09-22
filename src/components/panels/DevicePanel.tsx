@@ -3,11 +3,14 @@ import { motion } from 'framer-motion';
 import { useNetworkStore } from '../../stores/networkStore';
 import { Button } from '../ui/Button';
 import { DEVICE_COLORS } from '../../utils/colors';
+import { computeRoutingTable } from '../../engine/routing';
+import { deviceMac } from '../../utils/helpers';
 
 export const DevicePanel: React.FC = () => {
   const selectedDeviceId = useNetworkStore(s => s.selectedDeviceId);
   const devices = useNetworkStore(s => s.devices);
   const links = useNetworkStore(s => s.links);
+  const simConfig = useNetworkStore(s => s.simConfig);
   const updateDevice = useNetworkStore(s => s.updateDevice);
   const removeDevice = useNetworkStore(s => s.removeDevice);
   const toggleDeviceStatus = useNetworkStore(s => s.toggleDeviceStatus);
@@ -24,6 +27,26 @@ export const DevicePanel: React.FC = () => {
 
   const color = DEVICE_COLORS[device.type];
   const connectedLinks = links.filter(l => l.source === device.id || l.target === device.id);
+  const routingTable = device.status === 'active'
+    ? computeRoutingTable(devices, links, device.id, simConfig.routingAlgorithm)
+    : [];
+  const labelFor = (id: string) => devices.find(d => d.id === id)?.label ?? '—';
+
+  // Directly-attached neighbours — the basis for both the ARP cache (IP↔MAC)
+  // and, on a switch, the CAM/MAC forwarding table (MAC→port).
+  const neighbours = connectedLinks.map((link, idx) => {
+    const peerId = link.source === device.id ? link.target : link.source;
+    const peer = devices.find(d => d.id === peerId);
+    return {
+      linkId: link.id,
+      port: idx + 1,
+      label: peer?.label ?? 'Node',
+      ip: peer?.ip ?? 'N/A',
+      mac: peer ? deviceMac(peer) : '—',
+      active: link.status === 'active' && (peer?.status === 'active'),
+    };
+  });
+  const isSwitch = device.type === 'switch';
 
   return (
     <motion.div
@@ -183,6 +206,198 @@ export const DevicePanel: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* ─── Live Routing Table (shortest-path tree from this node) ─── */}
+        <div style={{
+          padding: '12px',
+          background: 'rgba(15, 23, 42, 0.6)',
+          border: '1px solid var(--border-glass)',
+          borderRadius: '10px',
+        }}>
+          <div style={{
+            fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)',
+            marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <span>🧭 Routing Table</span>
+            <span style={{
+              fontSize: '9px', fontWeight: 700, fontFamily: 'monospace',
+              color: simConfig.routingAlgorithm === 'dijkstra' ? '#06b6d4' : '#f59e0b',
+              background: simConfig.routingAlgorithm === 'dijkstra' ? 'rgba(6,182,212,0.12)' : 'rgba(245,158,11,0.12)',
+              border: `1px solid ${simConfig.routingAlgorithm === 'dijkstra' ? 'rgba(6,182,212,0.3)' : 'rgba(245,158,11,0.3)'}`,
+              padding: '1px 6px', borderRadius: '4px', textTransform: 'uppercase',
+            }}>
+              {simConfig.routingAlgorithm === 'dijkstra' ? 'OSPF · Dijkstra' : 'RIP · Bellman-Ford'}
+            </span>
+          </div>
+
+          {routingTable.length === 0 ? (
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic', padding: '4px 0' }}>
+              {device.status === 'active' ? 'No other reachable devices yet.' : 'Device offline — no routes computed.'}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              {/* Header row */}
+              <div style={{
+                display: 'grid', gridTemplateColumns: '1.4fr 1.4fr 0.6fr 0.6fr',
+                gap: '6px', fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)',
+                textTransform: 'uppercase', letterSpacing: '0.03em', padding: '0 6px 4px',
+                borderBottom: '1px solid var(--border-glass)',
+              }}>
+                <span>Destination</span>
+                <span>Next Hop</span>
+                <span style={{ textAlign: 'right' }}>Cost</span>
+                <span style={{ textAlign: 'right' }}>Hops</span>
+              </div>
+              {routingTable.map(r => (
+                <div
+                  key={r.destId}
+                  style={{
+                    display: 'grid', gridTemplateColumns: '1.4fr 1.4fr 0.6fr 0.6fr',
+                    gap: '6px', fontSize: '10.5px', fontFamily: 'monospace',
+                    padding: '4px 6px', borderRadius: '5px',
+                    background: 'var(--bg-tertiary)',
+                    color: r.reachable ? 'var(--text-secondary)' : '#f87171',
+                    alignItems: 'center',
+                  }}
+                >
+                  <span style={{ color: r.reachable ? 'var(--text-primary)' : '#f87171', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {labelFor(r.destId)}
+                  </span>
+                  <span style={{ color: r.reachable ? '#34d399' : '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {r.reachable ? labelFor(r.nextHopId) : 'unreachable'}
+                  </span>
+                  <span style={{ textAlign: 'right' }}>{r.reachable ? r.totalCost : '∞'}</span>
+                  <span style={{ textAlign: 'right' }}>{r.reachable ? r.hopCount : '—'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ─── ARP Cache (L3 → L2 resolution) ─── */}
+        <div style={{
+          padding: '12px',
+          background: 'rgba(15, 23, 42, 0.6)',
+          border: '1px solid var(--border-glass)',
+          borderRadius: '10px',
+        }}>
+          <div style={{
+            fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)',
+            marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <span>🏷️ ARP Cache</span>
+            <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>IP → MAC · L3↔L2</span>
+          </div>
+
+          {neighbours.length === 0 ? (
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic', padding: '4px 0' }}>
+              No neighbours — ARP cache empty.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <div style={{
+                display: 'grid', gridTemplateColumns: '1fr 1.5fr 0.5fr',
+                gap: '6px', fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)',
+                textTransform: 'uppercase', letterSpacing: '0.03em', padding: '0 6px 4px',
+                borderBottom: '1px solid var(--border-glass)',
+              }}>
+                <span>IP Address</span>
+                <span>Hardware (MAC)</span>
+                <span style={{ textAlign: 'right' }}>Type</span>
+              </div>
+              {neighbours.map(n => (
+                <div
+                  key={n.linkId}
+                  style={{
+                    display: 'grid', gridTemplateColumns: '1fr 1.5fr 0.5fr',
+                    gap: '6px', fontSize: '10px', fontFamily: 'monospace',
+                    padding: '4px 6px', borderRadius: '5px',
+                    background: 'var(--bg-tertiary)',
+                    color: n.active ? 'var(--text-secondary)' : '#64748b',
+                    alignItems: 'center',
+                    opacity: n.active ? 1 : 0.5,
+                  }}
+                  title={`${n.label} on Port #${n.port}`}
+                >
+                  <span style={{ color: n.active ? 'var(--text-primary)' : '#64748b' }}>{n.ip}</span>
+                  <span style={{ color: n.active ? '#38bdf8' : '#64748b', overflow: 'hidden', textOverflow: 'ellipsis' }}>{n.mac}</span>
+                  <span style={{ textAlign: 'right', color: 'var(--text-muted)' }}>
+                    {n.active ? 'dynamic' : 'stale'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ─── CAM / MAC Address Table (switch L2 forwarding) ─── */}
+        {isSwitch && (
+          <div style={{
+            padding: '12px',
+            background: 'rgba(15, 23, 42, 0.6)',
+            border: '1px solid var(--border-glass)',
+            borderRadius: '10px',
+          }}>
+            <div style={{
+              fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)',
+              marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <span>🔀 MAC Address Table</span>
+              <span style={{
+                fontSize: '9px', fontWeight: 700, fontFamily: 'monospace',
+                color: '#8b5cf6', background: 'rgba(139,92,246,0.12)',
+                border: '1px solid rgba(139,92,246,0.3)',
+                padding: '1px 6px', borderRadius: '4px',
+              }}>
+                CAM · 802.1D
+              </span>
+            </div>
+
+            {neighbours.length === 0 ? (
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic', padding: '4px 0' }}>
+                No learned MACs yet.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <div style={{
+                  display: 'grid', gridTemplateColumns: '1.6fr 0.7fr 0.7fr',
+                  gap: '6px', fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)',
+                  textTransform: 'uppercase', letterSpacing: '0.03em', padding: '0 6px 4px',
+                  borderBottom: '1px solid var(--border-glass)',
+                }}>
+                  <span>MAC Address</span>
+                  <span>Port</span>
+                  <span style={{ textAlign: 'right' }}>State</span>
+                </div>
+                {neighbours.map(n => (
+                  <div
+                    key={n.linkId}
+                    style={{
+                      display: 'grid', gridTemplateColumns: '1.6fr 0.7fr 0.7fr',
+                      gap: '6px', fontSize: '10px', fontFamily: 'monospace',
+                      padding: '4px 6px', borderRadius: '5px',
+                      background: 'var(--bg-tertiary)',
+                      alignItems: 'center',
+                      opacity: n.active ? 1 : 0.5,
+                    }}
+                    title={`Learned on Port #${n.port} (${n.label})`}
+                  >
+                    <span style={{ color: n.active ? '#c4b5fd' : '#64748b', overflow: 'hidden', textOverflow: 'ellipsis' }}>{n.mac}</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>Fa0/{n.port}</span>
+                    <span style={{ textAlign: 'right', color: n.active ? '#34d399' : '#f87171' }}>
+                      {n.active ? 'FWD' : 'DOWN'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{
+              fontSize: '9px', color: 'var(--text-muted)', marginTop: '6px', fontStyle: 'italic',
+            }}>
+              Switch forwards frames only to the port where the destination MAC was learned.
+            </div>
+          </div>
+        )}
 
         <Field label="Master Device Status">
           <motion.button

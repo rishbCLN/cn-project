@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useNetworkStore } from '../../stores/networkStore';
 import { useUIStore } from '../../stores/uiStore';
 import { PROTOCOL_COLORS } from '../../utils/colors';
-import { formatBytes, formatMs } from '../../utils/helpers';
+import { formatBytes, deviceMac } from '../../utils/helpers';
 
 export const Inspector: React.FC = () => {
   const inspectedPacketId = useUIStore(s => s.inspectedPacketId);
@@ -67,6 +67,44 @@ export const Inspector: React.FC = () => {
 
   const packet = packetHistory.find(p => p.id === inspectedPacketId);
   if (!packet) return null;
+
+  // Resolve real endpoint devices so the frame dump reflects the actual topology.
+  const srcDevice = devices.find(d => d.id === packet.sourceDeviceId);
+  const dstDevice = devices.find(d => d.id === packet.destDeviceId);
+  // Shared deterministic MAC so the same device shows one stable address
+  // everywhere (Inspector frame dump, ARP table, CAM table).
+  const srcMac = srcDevice ? deviceMac(srcDevice) : '02:00:00:00:00:00';
+  const dstMac = dstDevice ? deviceMac(dstDevice) : '02:00:00:00:00:00';
+  const protoHex = packet.protocol === 'TCP' ? '0x06 (TCP)'
+    : packet.protocol === 'UDP' ? '0x11 (UDP)'
+    : packet.protocol === 'ICMP' ? '0x01 (ICMP)'
+    : '0x11 (UDP/DNS)';
+
+  // ─── OSI 7-layer encapsulation model (Packet Tracer style) ───
+  // Built from the real packet so header sizes and PDU names reflect it.
+  const l4Proto = packet.protocol === 'TCP' ? 'TCP' : packet.protocol === 'ICMP' ? 'ICMP' : 'UDP';
+  const l4HeaderBytes = packet.protocol === 'TCP' ? 20 : packet.protocol === 'ICMP' ? 8 : 8;
+  const appProto = packet.protocol === 'DNS' ? 'DNS'
+    : packet.protocol === 'ICMP' ? 'ICMP (diagnostic)'
+    : packet.protocol === 'TCP' ? 'Application data (HTTP/TLS)'
+    : 'Application data';
+  const payloadBytes = Math.max(0, packet.size - 20 - l4HeaderBytes);
+  const osiLayers = [
+    { n: 7, name: 'Application', color: '#ec4899', pdu: 'Data',
+      detail: `${appProto} · ${payloadBytes} B payload` },
+    { n: 6, name: 'Presentation', color: '#d946ef', pdu: 'Data',
+      detail: 'Encoding / serialization (ASCII, TLS records)' },
+    { n: 5, name: 'Session', color: '#a855f7', pdu: 'Data',
+      detail: packet.protocol === 'TCP' ? 'Session established (3-way handshake)' : 'Stateless — no session' },
+    { n: 4, name: 'Transport', color: '#8b5cf6', pdu: packet.protocol === 'TCP' ? 'Segment' : 'Datagram',
+      detail: `${l4Proto} · +${l4HeaderBytes} B hdr · ${packet.protocol === 'TCP' ? `seq ${packet.seqNum}, ack ${packet.ackNum}` : 'connectionless'}` },
+    { n: 3, name: 'Network', color: '#3b82f6', pdu: 'Packet',
+      detail: `IPv4 · +20 B hdr · ${packet.sourceIP} → ${packet.destIP} · TTL ${packet.ttl}` },
+    { n: 2, name: 'Data Link', color: '#10b981', pdu: 'Frame',
+      detail: `Ethernet II · +14 B hdr +4 B FCS · ${srcMac} → ${dstMac}` },
+    { n: 1, name: 'Physical', color: '#64748b', pdu: 'Bits',
+      detail: `${(packet.size + 18) * 8} bits on the wire · CRC-32 ${packet.crc}` },
+  ];
 
   const rows = [
     ['Source IP', packet.sourceIP],
@@ -215,20 +253,34 @@ export const Inspector: React.FC = () => {
           lineHeight: '1.6',
         }}>
           <div style={{ color: '#10b981', fontWeight: 700, marginBottom: '2px' }}>[L2 Ethernet II Frame]</div>
-          <div>Dst MAC: 00:1A:2B:3C:4D:02</div>
-          <div>Src MAC: 00:1A:2B:3C:4D:01</div>
+          <div>Dst MAC: {dstMac} {dstDevice ? `(${dstDevice.label})` : ''}</div>
+          <div>Src MAC: {srcMac} {srcDevice ? `(${srcDevice.label})` : ''}</div>
           <div>EtherType: 0x0800 (IPv4)</div>
 
           <div style={{ color: '#3b82f6', fontWeight: 700, marginTop: '8px', marginBottom: '2px' }}>[L3 IPv4 Datagram Header]</div>
           <div>Ver/IHL: 0x45 | TOS: 0x00 | Len: {packet.size} Bytes</div>
           <div>ID: 0x{packet.seqNum.toString(16).padStart(4, '0')} | Flags: 0x4000 (DF) | TTL: {packet.ttl}</div>
-          <div>Proto: {packet.protocol === 'TCP' ? '0x06 (TCP)' : packet.protocol === 'UDP' ? '0x11 (UDP)' : '0x01 (ICMP)'}</div>
+          <div>Proto: {protoHex}</div>
           <div>Header Checksum: {packet.checksum}</div>
           <div>Src IP: {packet.sourceIP} ➔ Dst IP: {packet.destIP}</div>
 
-          <div style={{ color: '#8b5cf6', fontWeight: 700, marginTop: '8px', marginBottom: '2px' }}>[L4 {packet.protocol} Segment Header]</div>
-          <div>Seq: 0x{packet.seqNum.toString(16).padStart(8, '0')} | Ack: 0x{packet.ackNum.toString(16).padStart(8, '0')}</div>
-          <div>Window Size: 64240 Bytes | Flags: [ACK, PSH]</div>
+          <div style={{ color: '#8b5cf6', fontWeight: 700, marginTop: '8px', marginBottom: '2px' }}>[L4 {packet.protocol} {packet.protocol === 'TCP' ? 'Segment' : 'Datagram'} Header]</div>
+          {packet.protocol === 'TCP' ? (
+            <>
+              <div>Seq: 0x{packet.seqNum.toString(16).padStart(8, '0')} | Ack: 0x{packet.ackNum.toString(16).padStart(8, '0')}</div>
+              <div>Window Size: 64240 Bytes | Flags: [{packet.isAck ? 'ACK' : 'ACK, PSH'}]</div>
+            </>
+          ) : packet.protocol === 'ICMP' ? (
+            <>
+              <div>Type: 8 (Echo Request) | Code: 0</div>
+              <div>Identifier: 0x{packet.seqNum.toString(16).padStart(4, '0')} | Seq: {packet.seqNum}</div>
+            </>
+          ) : (
+            <>
+              <div>Src Port: {40000 + (packet.seqNum % 20000)} | Dst Port: {packet.protocol === 'DNS' ? 53 : 1024 + (packet.seqNum % 4000)}</div>
+              <div>Length: {packet.size} Bytes | (connectionless, no ACK)</div>
+            </>
+          )}
           <div style={{
             color: packet.crcValid ? '#10b981' : '#ef4444',
             fontWeight: 700, marginTop: '6px',
@@ -239,6 +291,74 @@ export const Inspector: React.FC = () => {
           }}>
             CRC-32 Checksum: {packet.crc} ({packet.crcValid ? '✓ PASS' : '✕ CORRUPTED'})
           </div>
+        </div>
+      </div>
+
+      {/* ─── OSI 7-Layer Encapsulation Stack ─── */}
+      <div style={{ marginTop: '16px' }}>
+        <div style={{
+          fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)',
+          textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px',
+        }}>
+          OSI Encapsulation (L7 → L1)
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+          {osiLayers.map((layer, i) => (
+            <motion.div
+              key={layer.n}
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.03 }}
+              style={{
+                display: 'flex',
+                alignItems: 'stretch',
+                borderRadius: '7px',
+                overflow: 'hidden',
+                border: `1px solid ${layer.color}33`,
+                background: `${layer.color}0e`,
+                // Progressive indent visualizes each layer wrapping the one above.
+                marginLeft: `${i * 6}px`,
+              }}
+            >
+              <div style={{
+                width: '26px', flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: `${layer.color}26`,
+                color: layer.color, fontWeight: 800, fontSize: '12px',
+                fontFamily: 'monospace',
+              }}>
+                {layer.n}
+              </div>
+              <div style={{ padding: '6px 9px', minWidth: 0, flex: 1 }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px',
+                }}>
+                  <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    {layer.name}
+                  </span>
+                  <span style={{
+                    fontSize: '9px', fontWeight: 700, fontFamily: 'monospace',
+                    color: layer.color, background: `${layer.color}22`,
+                    padding: '1px 6px', borderRadius: '4px', flexShrink: 0,
+                  }}>
+                    {layer.pdu}
+                  </span>
+                </div>
+                <div style={{
+                  fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'monospace',
+                  marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>
+                  {layer.detail}
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+        <div style={{
+          fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '8px',
+          textAlign: 'center', fontStyle: 'italic',
+        }}>
+          Each layer adds its header as the PDU descends the stack
         </div>
       </div>
     </motion.div>

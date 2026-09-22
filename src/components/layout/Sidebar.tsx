@@ -1,7 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { useNetworkStore } from '../../stores/networkStore';
-import { useUIStore } from '../../stores/uiStore';
 import { DeviceType } from '../../types';
 import { DEVICE_COLORS } from '../../utils/colors';
 
@@ -13,6 +12,36 @@ const DEVICE_LIST: { type: DeviceType; label: string; icon: string }[] = [
   { type: 'server', label: 'Server', icon: '▣' },
   { type: 'pc', label: 'PC', icon: '▢' },
 ];
+
+/**
+ * Real-world link-condition profiles — one click sets loss/latency/jitter/
+ * congestion/corruption to model a representative link. Inspired by netem
+ * traffic-control profiles and tools like NetHang (3G/4G/Wi-Fi/Starlink).
+ * Values are the tunable SimConfig fields only (topology is untouched).
+ */
+type ConditionProfile = Pick<
+  ReturnType<typeof useNetworkStore.getState>['simConfig'],
+  'packetLoss' | 'latencyMultiplier' | 'jitter' | 'corruptionRate' | 'congestion'
+>;
+
+const CONDITION_PROFILES: { key: string; label: string; icon: string; color: string; desc: string; config: ConditionProfile }[] = [
+  { key: 'fiber', label: 'Fiber', icon: '🟢', color: '#10b981', desc: 'Pristine low-latency link',
+    config: { packetLoss: 0, latencyMultiplier: 0.5, jitter: 1, corruptionRate: 0, congestion: 5 } },
+  { key: 'broadband', label: 'Broadband', icon: '🔵', color: '#06b6d4', desc: 'Typical home cable/DSL',
+    config: { packetLoss: 1, latencyMultiplier: 1, jitter: 8, corruptionRate: 0.5, congestion: 20 } },
+  { key: '4g', label: '4G LTE', icon: '📶', color: '#f59e0b', desc: 'Mobile — jittery, some loss',
+    config: { packetLoss: 3, latencyMultiplier: 2, jitter: 30, corruptionRate: 1, congestion: 35 } },
+  { key: 'wifi', label: 'Public Wi-Fi', icon: '📡', color: '#a855f7', desc: 'Congested shared AP',
+    config: { packetLoss: 6, latencyMultiplier: 1.5, jitter: 45, corruptionRate: 3, congestion: 65 } },
+  { key: 'satellite', label: 'Satellite', icon: '🛰️', color: '#3b82f6', desc: 'High-latency GEO hop',
+    config: { packetLoss: 4, latencyMultiplier: 8, jitter: 60, corruptionRate: 2, congestion: 25 } },
+  { key: 'lossy', label: 'Congested', icon: '🔴', color: '#ef4444', desc: 'Overloaded, heavy loss',
+    config: { packetLoss: 25, latencyMultiplier: 3, jitter: 90, corruptionRate: 12, congestion: 90 } },
+];
+
+const profileMatches = (c: ConditionProfile, p: ConditionProfile) =>
+  c.packetLoss === p.packetLoss && c.latencyMultiplier === p.latencyMultiplier &&
+  c.jitter === p.jitter && c.corruptionRate === p.corruptionRate && c.congestion === p.congestion;
 
 export const Sidebar: React.FC = () => {
   const simConfig = useNetworkStore(s => s.simConfig);
@@ -97,6 +126,53 @@ export const Sidebar: React.FC = () => {
 
         <div style={{ marginBottom: '16px' }}>
           <PresetInfoCard compact />
+        </div>
+
+        {/* ─── Link Condition Profiles ─── */}
+        <div style={{ marginBottom: '18px' }}>
+          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+            Link Profile
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+            {CONDITION_PROFILES.map(p => {
+              const active = profileMatches(
+                {
+                  packetLoss: simConfig.packetLoss,
+                  latencyMultiplier: simConfig.latencyMultiplier,
+                  jitter: simConfig.jitter,
+                  corruptionRate: simConfig.corruptionRate,
+                  congestion: simConfig.congestion,
+                },
+                p.config
+              );
+              return (
+                <motion.button
+                  key={p.key}
+                  onClick={() => setConditions(p.config)}
+                  whileTap={{ scale: 0.95 }}
+                  title={p.desc}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '7px 8px',
+                    borderRadius: '8px',
+                    border: `1.5px solid ${active ? p.color : 'var(--border-glass)'}`,
+                    background: active ? `${p.color}1e` : 'var(--bg-tertiary)',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    textAlign: 'left',
+                  }}
+                >
+                  <span style={{ fontSize: '13px', lineHeight: 1 }}>{p.icon}</span>
+                  <span style={{
+                    fontSize: '10.5px', fontWeight: 700,
+                    color: active ? p.color : 'var(--text-secondary)',
+                  }}>
+                    {p.label}
+                  </span>
+                </motion.button>
+              );
+            })}
+          </div>
         </div>
 
         {/* ─── Routing Algorithm Toggle ─── */}

@@ -41,6 +41,7 @@ export const EVENT_COLORS: Record<string, string> = {
   device_down: '#ef4444',
   device_up: '#10b981',
   route_changed: '#8b5cf6',
+  reroute: '#a855f7',
 };
 
 /* ─── Device Icon Colors ─── */

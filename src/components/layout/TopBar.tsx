@@ -3,9 +3,9 @@ import { motion } from 'framer-motion';
 import { useNetworkStore } from '../../stores/networkStore';
 import { useUIStore } from '../../stores/uiStore';
 import { formatMs } from '../../utils/helpers';
+import { EventType } from '../../types';
 
 export const TopBar: React.FC = () => {
-  const saveProject = useNetworkStore(s => s.saveProject);
   const loadProject = useNetworkStore(s => s.loadProject);
   const loadPresetScenario = useNetworkStore(s => s.loadPresetScenario);
   const activePreset = useNetworkStore(s => s.activePreset);
@@ -13,6 +13,8 @@ export const TopBar: React.FC = () => {
   const resetWorkspace = useNetworkStore(s => s.resetWorkspace);
   const toggleMinimap = useUIStore(s => s.toggleMinimap);
   const showMinimap = useUIStore(s => s.showMinimap);
+  const reducedMotion = useUIStore(s => s.reducedMotion);
+  const toggleReducedMotion = useUIStore(s => s.toggleReducedMotion);
   const pushNotification = useUIStore(s => s.pushNotification);
 
   /* ─── Simulation Store State ─── */
@@ -63,19 +65,24 @@ export const TopBar: React.FC = () => {
           setTimeout(() => {
             const currentState = useNetworkStore.getState();
             if (currentState.simState === 'running') {
+              // Snapshot event count BEFORE advancing so we can inspect every
+              // event this hop produces — a single hop emits several events
+              // (packet_hop, crc_pass/fail, packet_delivered, ack_sent, …),
+              // so checking only the last would miss TCP deliveries/corruption.
+              const before = useNetworkStore.getState().events.length;
               currentState.advancePacket(p.id);
+              const after = useNetworkStore.getState().events;
+              const newEvents = after.slice(before);
 
-              const latestEvents = useNetworkStore.getState().events;
-              const last = latestEvents[latestEvents.length - 1];
-              if (last && (
-                last.type === 'packet_dropped' ||
-                last.type === 'packet_corrupted' ||
-                last.type === 'crc_fail' ||
-                last.type === 'packet_delivered' ||
-                last.type === 'retransmission'
-              )) {
-                pushNotification(last.description, last.type);
-              }
+              // Surface the single most significant event for this hop.
+              const PRIORITY: EventType[] = [
+                'packet_dropped', 'packet_corrupted', 'crc_fail',
+                'retransmission', 'reroute', 'packet_delivered',
+              ];
+              const notable = PRIORITY
+                .map(type => newEvents.find(e => e.type === type))
+                .find(Boolean);
+              if (notable) pushNotification(notable.description, notable.type);
             }
           }, index * 250);
         }
@@ -272,6 +279,11 @@ export const TopBar: React.FC = () => {
         </select>
 
         <TopBarBtn label="Map" active={showMinimap} onClick={toggleMinimap} />
+        <TopBarBtn
+          label={reducedMotion ? '🔅 Motion Off' : '✨ Motion On'}
+          active={!reducedMotion}
+          onClick={toggleReducedMotion}
+        />
         <div style={{ width: '1px', height: '20px', background: 'var(--border-glass)', margin: '0 2px' }} />
         <TopBarBtn label="💾 Save" onClick={handleSave} />
         <TopBarBtn label="📂 Load" onClick={handleLoad} />

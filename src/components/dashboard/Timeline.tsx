@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useNetworkStore } from '../../stores/networkStore';
+import { useUIStore } from '../../stores/uiStore';
 import { EVENT_COLORS } from '../../utils/colors';
 
 const formatTimeWithMs = (timestamp: number) => {
@@ -17,7 +18,16 @@ const formatTimeWithMs = (timestamp: number) => {
 
 export const Timeline: React.FC = () => {
   const events = useNetworkStore(s => s.events);
+  const packetHistory = useNetworkStore(s => s.packetHistory);
+  const setInspectedPacket = useUIStore(s => s.setInspectedPacket);
   const displayEvents = events.slice(-60); // Last 60 events
+
+  // An event is clickable when its packet still exists in history — clicking
+  // jumps straight to that packet in the Inspector (Wireshark-style linking).
+  const inspectablePackets = useMemo(
+    () => new Set(packetHistory.map(p => p.id)),
+    [packetHistory]
+  );
 
   const groupedEvents = useMemo(() => {
     const groups: { time: number; events: typeof events }[] = [];
@@ -102,17 +112,25 @@ export const Timeline: React.FC = () => {
             paddingLeft: '8px',
             marginLeft: '4px',
           }}>
-            {group.events.map((event, i) => (
+            {group.events.map((event, i) => {
+              const canInspect = !!event.packetId && inspectablePackets.has(event.packetId);
+              return (
               <motion.div
                 key={event.id}
                 initial={groupIdx === 0 && i === group.events.length - 1 ? { opacity: 0, x: -5 } : false}
                 animate={{ opacity: 1, x: 0 }}
+                onClick={canInspect ? () => setInspectedPacket(event.packetId!) : undefined}
+                title={canInspect ? 'Click to inspect this packet' : undefined}
+                whileHover={canInspect ? { x: 2 } : undefined}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px',
-                  padding: '2px 0',
+                  padding: '2px 4px',
+                  margin: '0 -4px',
+                  borderRadius: '4px',
                   fontSize: '11px',
+                  cursor: canInspect ? 'pointer' : 'default',
                 }}
               >
                 {/* Step Index Number */}
@@ -208,7 +226,8 @@ export const Timeline: React.FC = () => {
                   );
                 })()}
               </motion.div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ))}

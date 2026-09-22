@@ -2,10 +2,14 @@ import { create } from 'zustand';
 import { Notification, EventType } from '../types';
 import { genId } from '../utils/helpers';
 
+export type TimelineView = 'log' | 'sequence';
+
 interface UIStore {
   activePanel: 'device' | 'link' | 'send' | 'inspector' | 'stats' | null;
   showMinimap: boolean;
   showTimeline: boolean;
+  timelineView: TimelineView;
+  reducedMotion: boolean;
   notifications: Notification[];
   searchQuery: string;
   inspectedPacketId: string | null;
@@ -16,6 +20,8 @@ interface UIStore {
   setPanel: (panel: UIStore['activePanel']) => void;
   toggleMinimap: () => void;
   toggleTimeline: () => void;
+  setTimelineView: (view: TimelineView) => void;
+  toggleReducedMotion: () => void;
   pushNotification: (message: string, type: EventType) => void;
   dismissNotification: (id: string) => void;
   setSearchQuery: (query: string) => void;
@@ -24,10 +30,17 @@ interface UIStore {
   stopDraggingConnection: () => void;
 }
 
+// Respect the OS-level "prefers-reduced-motion" setting as the initial default.
+const prefersReducedMotion =
+  typeof window !== 'undefined' &&
+  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
 export const useUIStore = create<UIStore>((set) => ({
   activePanel: 'send',
   showMinimap: true,
   showTimeline: true,
+  timelineView: 'log',
+  reducedMotion: !!prefersReducedMotion,
   notifications: [],
   searchQuery: '',
   inspectedPacketId: null,
@@ -38,6 +51,8 @@ export const useUIStore = create<UIStore>((set) => ({
   setPanel: (panel) => set({ activePanel: panel }),
   toggleMinimap: () => set(s => ({ showMinimap: !s.showMinimap })),
   toggleTimeline: () => set(s => ({ showTimeline: !s.showTimeline })),
+  setTimelineView: (view) => set({ timelineView: view }),
+  toggleReducedMotion: () => set(s => ({ reducedMotion: !s.reducedMotion })),
 
   pushNotification: (message, type) => {
     const notification: Notification = {

@@ -4,7 +4,17 @@ import {
 } from '../types';
 import { createPacket, processHop, computeMetrics } from '../engine/simulation';
 import { buildGraph, findPath } from '../engine/routing';
-import { genId, nextIP } from '../utils/helpers';
+import { genId, nextIP, resetIPCounter } from '../utils/helpers';
+
+/* Retention caps — the event log, metric timeline, and packet history would
+ * otherwise grow unbounded during continuous (auto-resend) simulation, leaking
+ * memory and steadily slowing every per-hop computeMetrics pass. Keeping a
+ * rolling window bounds both. */
+const MAX_EVENTS = 600;
+const MAX_METRIC_SNAPSHOTS = 300;
+const MAX_PACKET_HISTORY = 500;
+const cap = <T>(arr: T[], max: number): T[] =>
+  arr.length > max ? arr.slice(arr.length - max) : arr;
 
 export type PresetKey =
   | 'congestion'
@@ -110,11 +120,19 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
       router: 'Router', switch: 'Switch', server: 'Server', pc: 'PC',
     };
     const id = genId();
-    const existingCount = get().devices.filter(d => d.type === type).length;
+    // Number by the highest existing suffix (not the count) so deleting a
+    // middle device never causes a duplicate label like two "PC #2"s.
+    const prefix = labelMap[type];
+    const maxNum = get().devices
+      .filter(d => d.type === type)
+      .reduce((max, d) => {
+        const m = new RegExp(`^${prefix} #(\\d+)$`).exec(d.label);
+        return m ? Math.max(max, parseInt(m[1], 10)) : max;
+      }, 0);
     const device: Device = {
       id,
       type,
-      label: `${labelMap[type]} #${existingCount + 1}`,
+      label: `${prefix} #${maxNum + 1}`,
       ip: nextIP(),
       status: 'active',
       position,
@@ -169,7 +187,7 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
 
         if (reroute) {
           newEvents.push({
-            id: genId(), time: Date.now(), type: 'reroute' as any,
+            id: genId(), time: Date.now(), type: 'reroute',
             packetId: p.id,
             description: `⚡ REROUTE: Packet #${p.seqNum} at ${currentLabel} — ${device.label} disabled, rerouted via ${reroute.algorithm} (${reroute.path.length - 1} hops)`,
           });
@@ -188,8 +206,8 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
     set(state => ({
       devices: updatedDevices,
       activePackets: newActivePackets.filter(p => p.status !== 'dropped' || !newEvents.find(e => e.packetId === p.id && e.type === 'packet_dropped')),
-      packetHistory: [...state.packetHistory, ...newActivePackets.filter(p => p.status === 'dropped' && newEvents.find(e => e.packetId === p.id))],
-      events: [...state.events, ...newEvents],
+      packetHistory: cap([...state.packetHistory, ...newActivePackets.filter(p => p.status === 'dropped' && newEvents.find(e => e.packetId === p.id))], MAX_PACKET_HISTORY),
+      events: cap([...state.events, ...newEvents], MAX_EVENTS),
     }));
   },
 
@@ -244,7 +262,7 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
 
         if (reroute) {
           newEvents.push({
-            id: genId(), time: Date.now(), type: 'reroute' as any,
+            id: genId(), time: Date.now(), type: 'reroute',
             packetId: p.id,
             description: `⚡ REROUTE: Packet #${p.seqNum} at ${currentLabel} — link removed, rerouted via new path (${reroute.path.length - 1} hops)`,
           });
@@ -263,8 +281,8 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
     set(state => ({
       links: newLinks,
       activePackets: newActivePackets.filter(p => p.status !== 'dropped' || !newEvents.find(e => e.packetId === p.id)),
-      packetHistory: [...state.packetHistory, ...newActivePackets.filter(p => p.status === 'dropped' && newEvents.find(e => e.packetId === p.id))],
-      events: [...state.events, ...newEvents],
+      packetHistory: cap([...state.packetHistory, ...newActivePackets.filter(p => p.status === 'dropped' && newEvents.find(e => e.packetId === p.id))], MAX_PACKET_HISTORY),
+      events: cap([...state.events, ...newEvents], MAX_EVENTS),
       selectedLinkId: state.selectedLinkId === id ? null : state.selectedLinkId,
     }));
   },
@@ -312,7 +330,7 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
 
         if (reroute) {
           newEvents.push({
-            id: genId(), time: Date.now(), type: 'reroute' as any,
+            id: genId(), time: Date.now(), type: 'reroute',
             packetId: p.id,
             description: `⚡ REROUTE: Packet #${p.seqNum} at ${currentLabel} — link severed, rerouted via ${reroute.algorithm} (${reroute.path.length - 1} hops, cost ${reroute.totalCost.toFixed(1)})`,
           });
@@ -331,8 +349,8 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
     set(state => ({
       links: updatedLinks,
       activePackets: newActivePackets.filter(p => p.status !== 'dropped' || !newEvents.find(e => e.packetId === p.id && e.type === 'packet_dropped')),
-      packetHistory: [...state.packetHistory, ...newActivePackets.filter(p => p.status === 'dropped' && newEvents.find(e => e.packetId === p.id))],
-      events: [...state.events, ...newEvents],
+      packetHistory: cap([...state.packetHistory, ...newActivePackets.filter(p => p.status === 'dropped' && newEvents.find(e => e.packetId === p.id))], MAX_PACKET_HISTORY),
+      events: cap([...state.events, ...newEvents], MAX_EVENTS),
     }));
   },
 
@@ -352,10 +370,10 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
     const result = createPacket(src, dst, protocol, size, devices, links, simConfig.routingAlgorithm, simConfig);
     if (!result) {
       set(state => ({
-        events: [...state.events, {
+        events: cap([...state.events, {
           id: genId(), time: Date.now(), type: 'packet_dropped',
           description: `No route found: ${src.label} → ${dst.label}`,
-        }],
+        }], MAX_EVENTS),
       }));
       return;
     }
@@ -363,8 +381,8 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
     set(state => ({
       lastPacketConfig: { srcId, dstId, protocol, size },
       activePackets: [...state.activePackets, result.packet],
-      packetHistory: [...state.packetHistory, result.packet],
-      events: [...state.events, ...result.events],
+      packetHistory: cap([...state.packetHistory, result.packet], MAX_PACKET_HISTORY),
+      events: cap([...state.events, ...result.events], MAX_EVENTS),
       simState: 'running',
     }));
   },
@@ -384,17 +402,23 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
         p.id === packetId ? result.packet : p
       );
 
-      // Handle retransmission — create new packet on the same path
+      // Handle retransmission — create new packet on the same path.
+      // Carry forward the incremented retryCount + reset TTL so the 3-attempt
+      // cap is enforced across retransmission generations (avoids endless retries).
       if (result.packet.status === 'retransmitting') {
         const retransmitPacket: Packet = {
           ...packet,
           id: genId(),
           status: 'created',
           currentHop: 0,
+          ttl: 64,
           crcValid: true,
+          // processHop always sets the incremented retryCount before returning
+          // 'retransmitting'; fall back to the prior count only defensively.
+          retryCount: result.packet.retryCount ?? (packet.retryCount ?? 0),
           hopTimestamps: [Date.now()],
           createdAt: Date.now(),
-          retransmissionOf: packet.id,
+          retransmissionOf: packet.retransmissionOf ?? packet.id,
         };
         newActive = newActive.filter(p => p.id !== packetId);
         newActive.push(retransmitPacket);
@@ -438,17 +462,17 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
           : { ...d, load: Math.max(0, d.load - 0.03) };
       });
 
-      const allHistory = newHistory;
-      const metrics = computeMetrics(allHistory);
+      const cappedHistory = cap(newHistory, MAX_PACKET_HISTORY);
+      const metrics = computeMetrics(cappedHistory);
 
       return {
         activePackets: newActive,
-        packetHistory: newHistory,
-        events: [...state.events, ...result.events],
+        packetHistory: cappedHistory,
+        events: cap([...state.events, ...result.events], MAX_EVENTS),
         links: updatedLinks,
         devices: updatedDevices,
         metrics,
-        metricsHistory: [...state.metricsHistory, { time: Date.now(), metrics }],
+        metricsHistory: cap([...state.metricsHistory, { time: Date.now(), metrics }], MAX_METRIC_SNAPSHOTS),
         simState: newActive.length > 0 ? 'running' : 'idle',
       };
     });
@@ -481,19 +505,24 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
     links: get().links.map(l => ({ ...l, utilization: 0 })),
   }),
 
-  resetWorkspace: () => set({
-    devices: [],
-    links: [],
-    selectedDeviceId: null,
-    selectedLinkId: null,
-    activePreset: null,
-    activePackets: [],
-    packetHistory: [],
-    events: [],
-    metrics: { ...EMPTY_METRICS },
-    metricsHistory: [],
-    simState: 'idle',
-  }),
+  resetWorkspace: () => {
+    // Fresh workspace → restart IP allocation from .1 so device addresses are
+    // predictable rather than continuing to climb across resets.
+    resetIPCounter();
+    set({
+      devices: [],
+      links: [],
+      selectedDeviceId: null,
+      selectedLinkId: null,
+      activePreset: null,
+      activePackets: [],
+      packetHistory: [],
+      events: [],
+      metrics: { ...EMPTY_METRICS },
+      metricsHistory: [],
+      simState: 'idle',
+    });
+  },
 
   setSpeed: (speed) => set(state => ({
     simConfig: { ...state.simConfig, speed },
@@ -608,6 +637,14 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
       presetConfig = { ...DEFAULT_CONFIG, speed: 0.25, latencyMultiplier: 4, congestion: 30 };
     }
 
+    // Sync the IP allocator past any 192.168.1.x addresses this preset uses so
+    // subsequently-added devices don't collide with the preset's devices.
+    const maxOctet = presetDevices.reduce((max, d) => {
+      const m = /^192\.168\.1\.(\d+)$/.exec(d.ip ?? '');
+      return m ? Math.max(max, parseInt(m[1], 10)) : max;
+    }, 0);
+    resetIPCounter(maxOctet > 0 ? Math.min(254, maxOctet + 1) : 1);
+
     set({
       devices: presetDevices,
       links: presetLinks,
@@ -628,11 +665,22 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
   loadProject: (json) => {
     try {
       const data = JSON.parse(json);
-      if (!data.devices || !data.links) return false;
+      // Validate shape — a malformed file must not corrupt the workspace.
+      if (!Array.isArray(data.devices) || !Array.isArray(data.links)) return false;
+
+      // Re-sync the IP allocator past the highest 192.168.1.x address in the
+      // loaded set, so freshly added devices don't collide with loaded ones.
+      const maxOctet = (data.devices as Device[]).reduce((max, d) => {
+        const m = /^192\.168\.1\.(\d+)$/.exec(d.ip ?? '');
+        return m ? Math.max(max, parseInt(m[1], 10)) : max;
+      }, 0);
+      if (maxOctet > 0) resetIPCounter(Math.min(254, maxOctet + 1));
+
       set({
         devices: data.devices,
         links: data.links,
         simConfig: data.config ?? { ...DEFAULT_CONFIG },
+        activePreset: null,
         activePackets: [],
         packetHistory: [],
         events: [],
@@ -662,7 +710,7 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
 
   /* ─── Events ─── */
   pushEvent: (event) => set(state => ({
-    events: [...state.events, event],
+    events: cap([...state.events, event], MAX_EVENTS),
   })),
 
   clearEvents: () => set({ events: [] }),

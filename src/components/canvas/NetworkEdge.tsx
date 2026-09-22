@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { EdgeProps, getBezierPath } from 'reactflow';
-import { getTrafficColor } from '../../utils/colors';
 import { useNetworkStore } from '../../stores/networkStore';
+import { useUIStore } from '../../stores/uiStore';
 
 /**
  * Custom edge that changes color based on utilization (green → yellow → red).
@@ -9,12 +9,13 @@ import { useNetworkStore } from '../../stores/networkStore';
  */
 const NetworkEdge: React.FC<EdgeProps> = memo(({
   id, sourceX, sourceY, targetX, targetY,
-  sourcePosition, targetPosition, data, style, selected,
+  sourcePosition, targetPosition, data, selected,
   source, target,
 }) => {
   const activePackets = useNetworkStore(s => s.activePackets);
   const simConfig = useNetworkStore(s => s.simConfig);
   const simState = useNetworkStore(s => s.simState);
+  const reducedMotion = useUIStore(s => s.reducedMotion);
   const utilization = data?.utilization ?? 0;
   
   // ─── Network Parameter Visualizations ───
@@ -94,11 +95,15 @@ const NetworkEdge: React.FC<EdgeProps> = memo(({
   // 7. Packet Loss Flickering & Congestion Choke Pulse
   const isLossy = simConfig.packetLoss > 10;
   const flickerDuration = Math.max(0.2, Math.min(2.0, 100 / simConfig.packetLoss));
-  const animationString = isFlowing
+  // The choke-pulse keyframe bakes in this edge's own waterWidth, so its name
+  // must be unique per edge — CSS keyframes are global by name, and a shared
+  // name would let the last-rendered edge override every edge's pulse width.
+  const chokeName = `flow-choke-pulse-${id.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const animationString = isFlowing && !reducedMotion
     ? [
         `${isReverse ? 'dash-flow-reverse' : 'dash-flow-forward'} ${flowDuration.toFixed(2)}s ${animationTiming} infinite`,
         isLossy ? `flow-flicker ${flickerDuration}s ease-in-out infinite` : '',
-        congestionPct > 40 ? 'flow-choke-pulse 1.2s ease-in-out infinite' : ''
+        congestionPct > 40 ? `${chokeName} 1.2s ease-in-out infinite` : ''
       ].filter(Boolean).join(', ')
     : 'none';
 
@@ -282,7 +287,7 @@ const NetworkEdge: React.FC<EdgeProps> = memo(({
           0%, 100% { opacity: 0.95; }
           50% { opacity: 0.15; }
         }
-        @keyframes flow-choke-pulse {
+        @keyframes ${chokeName} {
           0%, 100% { stroke-width: ${waterWidth}px; opacity: 0.95; }
           50% { stroke-width: ${Math.max(1, waterWidth * 0.5)}px; opacity: 0.5; }
         }

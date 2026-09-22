@@ -247,7 +247,7 @@ export function processHop(
         ];
         const destLabel = destDevice ? `${destDevice.label} (${destDevice.ip})` : packet.destIP;
         events.push({
-          id: genId(), time: now, type: 'reroute' as any,
+          id: genId(), time: now, type: 'reroute',
           packetId: packet.id,
           description: `⚡ REROUTE: Packet #${packet.seqNum} at ${currentLabel} — link severed, rerouted to ${destLabel} via new path (cost ${reroute.totalCost.toFixed(1)}, ${reroute.path.length - 1} hops)`,
         });
@@ -299,10 +299,10 @@ export function processHop(
     });
 
     // TCP protocol attempts retransmission on packet loss
-    const retryCount = (packet as any).retryCount ?? 0;
+    const retryCount = packet.retryCount ?? 0;
     if (packet.protocol === 'TCP' && retryCount < 3) {
       updatedPacket.status = 'retransmitting';
-      (updatedPacket as any).retryCount = retryCount + 1;
+      updatedPacket.retryCount = retryCount + 1;
       events.push({
         id: genId(), time: now, type: 'retransmission',
         packetId: packet.id,
@@ -343,13 +343,16 @@ export function processHop(
       description: `Packet #${packet.seqNum} (${packet.size} B) corrupted at ${currentDeviceStr}`,
     });
 
-    // TCP packets will be retransmitted
-    if (packet.protocol === 'TCP') {
+    // TCP packets will be retransmitted — capped + incremented exactly like
+    // the packet-loss path, so corruption can't trigger unbounded retries.
+    const corruptRetry = packet.retryCount ?? 0;
+    if (packet.protocol === 'TCP' && corruptRetry < 3) {
       updatedPacket.status = 'retransmitting';
+      updatedPacket.retryCount = corruptRetry + 1;
       events.push({
         id: genId(), time: now, type: 'retransmission',
         packetId: packet.id,
-        description: `Retransmission scheduled for packet #${packet.seqNum} (TCP reliable delivery)`,
+        description: `TCP Retransmission #${corruptRetry + 1} scheduled for packet #${packet.seqNum} (corruption recovery)`,
       });
     }
 
@@ -423,7 +426,10 @@ export function computeMetrics(history: Packet[]): Metrics {
   const sent = history.filter(p => !p.isAck).length;
   const delivered = history.filter(p => p.status === 'delivered' && !p.isAck).length;
   const lost = history.filter(p => p.status === 'dropped' && !p.isAck).length;
-  const corrupted = history.filter(p => (p.status === 'corrupted' || p.status === 'retransmitting') && !p.isAck).length;
+  // Corruption is the only thing that flips crcValid → false. Keying off that
+  // (rather than status) avoids miscounting loss-triggered retransmissions,
+  // which also carry the 'retransmitting' status but are NOT corrupted.
+  const corrupted = history.filter(p => p.crcValid === false && !p.isAck).length;
   const retransmissions = history.filter(p => p.retransmissionOf).length;
 
   const deliveredPackets = history.filter(p => p.status === 'delivered' && !p.isAck);

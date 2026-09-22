@@ -6,6 +6,15 @@
 
 import { Device, Link, RoutingAlgorithm } from '../types';
 
+/* ─── Routing table entry (as a router would compute it) ─── */
+export interface RouteEntry {
+  destId: string;
+  nextHopId: string;
+  totalCost: number;
+  hopCount: number;
+  reachable: boolean;
+}
+
 /* ─── Types ─── */
 
 interface GraphEdge {
@@ -76,6 +85,50 @@ export function buildGraph(
 function computeLinkCost(link: Link): number {
   const bwFactor = 1000 / Math.max(link.bandwidth, 1);
   return link.cost + bwFactor + link.latency;
+}
+
+/**
+ * Compute the full routing table for a single source device — one entry per
+ * other active device, giving next hop, total path cost, and hop count. This
+ * mirrors what a real router derives from its shortest-path tree (OSPF/RIP).
+ */
+export function computeRoutingTable(
+  devices: Device[],
+  links: Link[],
+  sourceId: string,
+  algorithm: RoutingAlgorithm = 'dijkstra'
+): RouteEntry[] {
+  const graph = buildGraph(devices, links);
+  const entries: RouteEntry[] = [];
+
+  for (const dest of devices) {
+    if (dest.id === sourceId || dest.status !== 'active') continue;
+
+    const result = findPath(graph, sourceId, dest.id, algorithm);
+    if (result && result.path.length >= 2) {
+      entries.push({
+        destId: dest.id,
+        nextHopId: result.path[1],
+        totalCost: Number(result.totalCost.toFixed(1)),
+        hopCount: result.path.length - 1,
+        reachable: true,
+      });
+    } else {
+      entries.push({
+        destId: dest.id,
+        nextHopId: '',
+        totalCost: Infinity,
+        hopCount: 0,
+        reachable: false,
+      });
+    }
+  }
+
+  // Reachable routes first, then by ascending cost.
+  return entries.sort((a, b) => {
+    if (a.reachable !== b.reachable) return a.reachable ? -1 : 1;
+    return a.totalCost - b.totalCost;
+  });
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -284,17 +337,3 @@ function bellmanFord(
   };
 }
 
-/* ═══════════════════════════════════════════════════════════════
- *  Legacy export — keeps backwards compatibility
- * ═══════════════════════════════════════════════════════════════ */
-
-/**
- * @deprecated Use findPath() instead. Kept for backwards compatibility.
- */
-export function findShortestPath(
-  graph: Map<string, GraphEdge[]>,
-  source: string,
-  destination: string
-): { path: string[]; totalCost: number; linkIds: string[] } | null {
-  return findPath(graph, source, destination, 'dijkstra');
-}

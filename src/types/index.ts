@@ -60,6 +60,8 @@ export interface Packet {
   retransmissionOf?: string;
   isAck?: boolean;
   rttMs?: number;
+  /** Number of retransmission attempts (TCP reliability). */
+  retryCount?: number;
 }
 
 /* ─── Routing ─── */
@@ -96,7 +98,8 @@ export type EventType =
   | 'link_up'
   | 'device_down'
   | 'device_up'
-  | 'route_changed';
+  | 'route_changed'
+  | 'reroute';
 
 export interface SimEvent {
   id: string;

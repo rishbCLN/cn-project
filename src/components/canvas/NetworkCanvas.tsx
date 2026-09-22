@@ -16,6 +16,8 @@ import { useNetworkStore } from '../../stores/networkStore';
 import { useUIStore } from '../../stores/uiStore';
 import DeviceNode from './DeviceNode';
 import NetworkEdge from './NetworkEdge';
+import { PacketLayer } from './PacketDot';
+import { CanvasOnboarding } from './CanvasOnboarding';
 import { DeviceType } from '../../types';
 
 const nodeTypes: NodeTypes = {
@@ -173,6 +175,7 @@ export const NetworkCanvas: React.FC = () => {
         edgeTypes={edgeTypes}
         connectionMode={ConnectionMode.Loose}
         connectionRadius={60}
+        deleteKeyCode={null}
         fitView
         snapToGrid
         snapGrid={[15, 15]}
@@ -206,6 +209,9 @@ export const NetworkCanvas: React.FC = () => {
             style={{ bottom: 16, right: 16 }}
           />
         )}
+
+        {/* Animated packets travel along paths, aligned to the live viewport */}
+        <PacketLayer />
       </ReactFlow>
 
       {/* ─── Preset Scenario Description Floating Banner ─── */}
@@ -219,6 +225,9 @@ export const NetworkCanvas: React.FC = () => {
       }}>
         <PresetInfoCard />
       </div>
+
+      {/* ─── First-run onboarding (only when canvas is empty) ─── */}
+      {devices.length === 0 && <CanvasOnboarding />}
     </div>
   );
 };
