@@ -4,7 +4,10 @@ import { useNetworkStore } from '../../stores/networkStore';
 import { Button } from '../ui/Button';
 import { DEVICE_COLORS } from '../../utils/colors';
 import { computeRoutingTable } from '../../engine/routing';
-import { deviceMac } from '../../utils/helpers';
+import {
+  deviceMac, isValidIP, isValidMask, maskToCidr,
+  networkAddress, broadcastAddress, sameSubnet, DEFAULT_MASK,
+} from '../../utils/helpers';
 
 export const DevicePanel: React.FC = () => {
   const selectedDeviceId = useNetworkStore(s => s.selectedDeviceId);
@@ -25,8 +28,20 @@ export const DevicePanel: React.FC = () => {
     );
   }
 
-  const color = DEVICE_COLORS[device.type];
+  const color = DEVICE_COLORS[device.type] ?? '#94a3b8';
   const connectedLinks = links.filter(l => l.source === device.id || l.target === device.id);
+
+  // ─── L3 addressing (subnet math) ───
+  const mask = device.subnetMask || DEFAULT_MASK;
+  const ipValid = isValidIP(device.ip);
+  const maskValid = isValidMask(mask);
+  const cidr = maskValid ? maskToCidr(mask) : null;
+  const network = ipValid && maskValid ? networkAddress(device.ip, mask) : null;
+  const broadcast = ipValid && maskValid ? broadcastAddress(device.ip, mask) : null;
+  const gwValid = !device.gateway || isValidIP(device.gateway);
+  const gwInSubnet = !!device.gateway && ipValid && maskValid && sameSubnet(device.ip, device.gateway, mask);
+  const isHost = device.type === 'pc' || device.type === 'server';
+
   const routingTable = device.status === 'active'
     ? computeRoutingTable(devices, links, device.id, simConfig.routingAlgorithm)
     : [];
@@ -81,8 +96,58 @@ export const DevicePanel: React.FC = () => {
             type="text"
             value={device.ip}
             onChange={e => updateDevice(device.id, { ip: e.target.value })}
+            style={ipValid ? undefined : { borderColor: '#ef4444' }}
           />
         </Field>
+
+        <Field label={`Subnet Mask${cidr !== null ? ` (/${cidr})` : ''}`}>
+          <input
+            type="text"
+            value={device.subnetMask ?? ''}
+            placeholder={DEFAULT_MASK}
+            onChange={e => updateDevice(device.id, { subnetMask: e.target.value })}
+            style={maskValid ? undefined : { borderColor: '#ef4444' }}
+          />
+        </Field>
+
+        <Field label="Default Gateway">
+          <input
+            type="text"
+            value={device.gateway ?? ''}
+            placeholder="e.g. 192.168.1.1"
+            onChange={e => updateDevice(device.id, { gateway: e.target.value || undefined })}
+            style={gwValid && (!device.gateway || gwInSubnet) ? undefined : { borderColor: '#ef4444' }}
+          />
+          {device.gateway && gwValid && !gwInSubnet && (
+            <div style={{ fontSize: '9px', color: '#f87171', marginTop: '3px', fontFamily: 'monospace' }}>
+              Gateway is outside this device's subnet — unusable.
+            </div>
+          )}
+          {isHost && !device.gateway && (
+            <div style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: '3px', fontFamily: 'monospace' }}>
+              Required to reach hosts on other subnets.
+            </div>
+          )}
+        </Field>
+
+        {/* ─── Subnet readout (network / broadcast / range) ─── */}
+        <div style={{
+          background: 'rgba(10, 14, 26, 0.95)',
+          border: '1px solid var(--border-glass)',
+          borderRadius: '10px',
+          padding: '10px',
+          fontSize: '10px',
+          fontFamily: 'monospace',
+          color: 'var(--text-secondary)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '4px',
+        }}>
+          <div style={{ color: color, fontWeight: 700 }}>[Subnet]</div>
+          <div>• CIDR: {cidr !== null ? `/${cidr}` : '—'}</div>
+          <div>• Network: {network ?? '—'}</div>
+          <div>• Broadcast: {broadcast ?? '—'}</div>
+        </div>
 
         <Field label="Type">
           <div style={{
@@ -112,7 +177,7 @@ export const DevicePanel: React.FC = () => {
           gap: '4px',
         }}>
           <div style={{ color: color, fontWeight: 700 }}>[Interface Telemetry]</div>
-          <div>• MAC: {device.mac || '00:1A:2B:3C:4D:FE'}</div>
+          <div>• MAC: {deviceMac(device)}</div>
           <div>• Buffer Queue: {Math.round((device.load ?? 0) * 16)} / 64 Packets</div>
           <div>• Master Port: {device.status === 'active' ? 'ETH0 UP (1000Mbps)' : 'ETH0 DOWN'}</div>
           <div>• Active Ports: {connectedLinks.filter(l => l.status === 'active').length} / {connectedLinks.length}</div>

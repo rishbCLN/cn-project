@@ -208,7 +208,7 @@ function dijkstra(
   }
 
   // Reconstruct path
-  if (dist.get(destination) === Infinity) return null;
+  if (!dist.has(destination) || dist.get(destination) === Infinity) return null;
 
   const path: string[] = [];
   const linkIds: string[] = [];
@@ -311,7 +311,7 @@ function bellmanFord(
   }
 
   // Reconstruct path
-  if (dist.get(destination) === Infinity) return null;
+  if (!dist.has(destination) || dist.get(destination) === Infinity) return null;
 
   const path: string[] = [];
   const linkIds: string[] = [];

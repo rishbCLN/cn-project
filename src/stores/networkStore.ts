@@ -2,9 +2,9 @@ import { create } from 'zustand';
 import {
   Device, Link, Packet, Protocol, SimState, SimConfig, SimEvent, Metrics, MetricSnapshot, DeviceType,
 } from '../types';
-import { createPacket, processHop, computeMetrics } from '../engine/simulation';
+import { createPacket, processHop, computeMetrics, resetSeqCounter } from '../engine/simulation';
 import { buildGraph, findPath } from '../engine/routing';
-import { genId, nextIP, resetIPCounter } from '../utils/helpers';
+import { genId, nextIP, resetIPCounter, sameSubnet, DEFAULT_MASK } from '../utils/helpers';
 
 /* Retention caps — the event log, metric timeline, and packet history would
  * otherwise grow unbounded during continuous (auto-resend) simulation, leaking
@@ -98,15 +98,49 @@ const EMPTY_METRICS: Metrics = {
   avgRTT: 0, throughput: 0, deliveryRate: 0, errorRate: 0,
 };
 
+/* ─── Autosave ─── */
+// The working topology (devices, links, sim conditions) is mirrored to localStorage
+// so a page reload restores the last session. Transient runtime fields (device load,
+// link utilization, in-flight packets, event log) are intentionally NOT persisted.
+const AUTOSAVE_KEY = 'packetflow_autosave';
+
+interface AutosaveShape { devices: Device[]; links: Link[]; config: SimConfig; }
+
+function loadAutosave(): AutosaveShape | null {
+  try {
+    const raw = localStorage.getItem(AUTOSAVE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data.devices) || !Array.isArray(data.links)) return null;
+    return {
+      devices: data.devices as Device[],
+      links: data.links as Link[],
+      config: { ...DEFAULT_CONFIG, ...(data.config ?? {}) },
+    };
+  } catch {
+    return null;
+  }
+}
+
+const restored = loadAutosave();
+// Keep the IP allocator ahead of any restored 192.168.1.x addresses.
+if (restored) {
+  const maxOctet = restored.devices.reduce((max, d) => {
+    const m = /^192\.168\.1\.(\d+)$/.exec(d.ip ?? '');
+    return m ? Math.max(max, parseInt(m[1], 10)) : max;
+  }, 0);
+  if (maxOctet > 0) resetIPCounter(Math.min(254, maxOctet + 1));
+}
+
 export const useNetworkStore = create<NetworkStore>((set, get) => ({
   /* ─── Initial State ─── */
-  devices: [],
-  links: [],
+  devices: restored?.devices ?? [],
+  links: restored?.links ?? [],
   selectedDeviceId: null,
   selectedLinkId: null,
   activePreset: null,
   simState: 'idle',
-  simConfig: { ...DEFAULT_CONFIG },
+  simConfig: restored?.config ?? { ...DEFAULT_CONFIG },
   activePackets: [],
   packetHistory: [],
   lastPacketConfig: null,
@@ -134,6 +168,7 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
       type,
       label: `${prefix} #${maxNum + 1}`,
       ip: nextIP(),
+      subnetMask: DEFAULT_MASK,
       status: 'active',
       position,
       load: 0,
@@ -142,11 +177,30 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
   },
 
   removeDevice: (id) => {
-    set(state => ({
-      devices: state.devices.filter(d => d.id !== id),
-      links: state.links.filter(l => l.source !== id && l.target !== id),
-      selectedDeviceId: state.selectedDeviceId === id ? null : state.selectedDeviceId,
-    }));
+    set(state => {
+      // Links attached to the removed device are pruned; if one of them (or the
+      // device) was selected, clear the now-dangling selection. Also invalidate
+      // lastPacketConfig when it references the removed device, otherwise
+      // startSim's auto-resend would silently no-op against a missing endpoint.
+      const removedLinkIds = new Set(
+        state.links.filter(l => l.source === id || l.target === id).map(l => l.id)
+      );
+      const lastPacketConfig =
+        state.lastPacketConfig &&
+        (state.lastPacketConfig.srcId === id || state.lastPacketConfig.dstId === id)
+          ? null
+          : state.lastPacketConfig;
+      return {
+        devices: state.devices.filter(d => d.id !== id),
+        links: state.links.filter(l => l.source !== id && l.target !== id),
+        selectedDeviceId: state.selectedDeviceId === id ? null : state.selectedDeviceId,
+        selectedLinkId:
+          state.selectedLinkId && removedLinkIds.has(state.selectedLinkId)
+            ? null
+            : state.selectedLinkId,
+        lastPacketConfig,
+      };
+    });
   },
 
   updateDevice: (id, updates) => {
@@ -203,12 +257,20 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
       });
     }
 
-    set(state => ({
-      devices: updatedDevices,
-      activePackets: newActivePackets.filter(p => p.status !== 'dropped' || !newEvents.find(e => e.packetId === p.id && e.type === 'packet_dropped')),
-      packetHistory: cap([...state.packetHistory, ...newActivePackets.filter(p => p.status === 'dropped' && newEvents.find(e => e.packetId === p.id))], MAX_PACKET_HISTORY),
-      events: cap([...state.events, ...newEvents], MAX_EVENTS),
-    }));
+    set(state => {
+      // Dropped/rerouted packets already live in packetHistory (added at send time
+      // and updated in place by advancePacket). Update them in place here too —
+      // appending would create duplicate ids that computeMetrics double-counts.
+      const updatedById = new Map(newActivePackets.map(p => [p.id, p]));
+      const packetHistory = cap(state.packetHistory.map(h => updatedById.get(h.id) ?? h), MAX_PACKET_HISTORY);
+      return {
+        devices: updatedDevices,
+        activePackets: newActivePackets.filter(p => p.status !== 'dropped' || !newEvents.find(e => e.packetId === p.id && e.type === 'packet_dropped')),
+        packetHistory,
+        events: cap([...state.events, ...newEvents], MAX_EVENTS),
+        metrics: computeMetrics(packetHistory),
+      };
+    });
   },
 
   /* ─── Link Actions ─── */
@@ -278,13 +340,18 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
       });
     }
 
-    set(state => ({
-      links: newLinks,
-      activePackets: newActivePackets.filter(p => p.status !== 'dropped' || !newEvents.find(e => e.packetId === p.id)),
-      packetHistory: cap([...state.packetHistory, ...newActivePackets.filter(p => p.status === 'dropped' && newEvents.find(e => e.packetId === p.id))], MAX_PACKET_HISTORY),
-      events: cap([...state.events, ...newEvents], MAX_EVENTS),
-      selectedLinkId: state.selectedLinkId === id ? null : state.selectedLinkId,
-    }));
+    set(state => {
+      const updatedById = new Map(newActivePackets.map(p => [p.id, p]));
+      const packetHistory = cap(state.packetHistory.map(h => updatedById.get(h.id) ?? h), MAX_PACKET_HISTORY);
+      return {
+        links: newLinks,
+        activePackets: newActivePackets.filter(p => p.status !== 'dropped' || !newEvents.find(e => e.packetId === p.id && e.type === 'packet_dropped')),
+        packetHistory,
+        events: cap([...state.events, ...newEvents], MAX_EVENTS),
+        selectedLinkId: state.selectedLinkId === id ? null : state.selectedLinkId,
+        metrics: computeMetrics(packetHistory),
+      };
+    });
   },
 
   updateLink: (id, updates) => {
@@ -346,12 +413,17 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
       });
     }
 
-    set(state => ({
-      links: updatedLinks,
-      activePackets: newActivePackets.filter(p => p.status !== 'dropped' || !newEvents.find(e => e.packetId === p.id && e.type === 'packet_dropped')),
-      packetHistory: cap([...state.packetHistory, ...newActivePackets.filter(p => p.status === 'dropped' && newEvents.find(e => e.packetId === p.id))], MAX_PACKET_HISTORY),
-      events: cap([...state.events, ...newEvents], MAX_EVENTS),
-    }));
+    set(state => {
+      const updatedById = new Map(newActivePackets.map(p => [p.id, p]));
+      const packetHistory = cap(state.packetHistory.map(h => updatedById.get(h.id) ?? h), MAX_PACKET_HISTORY);
+      return {
+        links: updatedLinks,
+        activePackets: newActivePackets.filter(p => p.status !== 'dropped' || !newEvents.find(e => e.packetId === p.id && e.type === 'packet_dropped')),
+        packetHistory,
+        events: cap([...state.events, ...newEvents], MAX_EVENTS),
+        metrics: computeMetrics(packetHistory),
+      };
+    });
   },
 
   updateDevicePosition: (id, position) => {
@@ -366,6 +438,25 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
     const src = devices.find(d => d.id === srcId);
     const dst = devices.find(d => d.id === dstId);
     if (!src || !dst) return;
+
+    // ─── L3 reachability: a host can only leave its own subnet via a default
+    // gateway that lives in that subnet. Routers/switches forward natively. ───
+    const srcMask = src.subnetMask || DEFAULT_MASK;
+    const isHost = src.type === 'pc' || src.type === 'server';
+    if (isHost && !sameSubnet(src.ip, dst.ip, srcMask)) {
+      const gwUsable = !!src.gateway && sameSubnet(src.ip, src.gateway, srcMask);
+      if (!gwUsable) {
+        set(state => ({
+          events: cap([...state.events, {
+            id: genId(), time: Date.now(), type: 'packet_dropped',
+            description: src.gateway
+              ? `${src.label} (${src.ip}) → ${dst.label} (${dst.ip}) blocked: destination is on another subnet and the default gateway ${src.gateway} is not in ${src.label}'s subnet`
+              : `${src.label} (${src.ip}) → ${dst.label} (${dst.ip}) blocked: different subnet and no default gateway configured on ${src.label}`,
+          }], MAX_EVENTS),
+        }));
+        return;
+      }
+    }
 
     const result = createPacket(src, dst, protocol, size, devices, links, simConfig.routingAlgorithm, simConfig);
     if (!result) {
@@ -494,21 +585,25 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
     links: get().links.map(l => ({ ...l, utilization: 0 })),
   }),
 
-  resetSim: () => set({
-    activePackets: [],
-    packetHistory: [],
-    events: [],
-    metrics: { ...EMPTY_METRICS },
-    metricsHistory: [],
-    simState: 'idle',
-    devices: get().devices.map(d => ({ ...d, load: 0 })),
-    links: get().links.map(l => ({ ...l, utilization: 0 })),
-  }),
+  resetSim: () => {
+    resetSeqCounter();
+    set({
+      activePackets: [],
+      packetHistory: [],
+      events: [],
+      metrics: { ...EMPTY_METRICS },
+      metricsHistory: [],
+      simState: 'idle',
+      devices: get().devices.map(d => ({ ...d, load: 0 })),
+      links: get().links.map(l => ({ ...l, utilization: 0 })),
+    });
+  },
 
   resetWorkspace: () => {
     // Fresh workspace → restart IP allocation from .1 so device addresses are
     // predictable rather than continuing to climb across resets.
     resetIPCounter();
+    resetSeqCounter();
     set({
       devices: [],
       links: [],
@@ -528,9 +623,18 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
     simConfig: { ...state.simConfig, speed },
   })),
 
-  setConditions: (config) => set(state => ({
-    simConfig: { ...state.simConfig, ...config },
-  })),
+  setConditions: (config) => set(state => {
+    // Switching the routing algorithm changes how every subsequent path is
+    // computed — log it distinctly from an in-flight 'reroute'.
+    const algoChanged = !!config.routingAlgorithm && config.routingAlgorithm !== state.simConfig.routingAlgorithm;
+    const events = algoChanged
+      ? cap([...state.events, {
+          id: genId(), time: Date.now(), type: 'route_changed' as const,
+          description: `Routing algorithm changed: ${state.simConfig.routingAlgorithm} → ${config.routingAlgorithm} — future paths recomputed`,
+        }], MAX_EVENTS)
+      : state.events;
+    return { simConfig: { ...state.simConfig, ...config }, events };
+  }),
 
   /* ─── Persistence ─── */
   saveProject: (name) => {
@@ -606,12 +710,12 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
       presetConfig = { ...DEFAULT_CONFIG, speed: 0.25, congestion: 10, packetLoss: 0 };
     } else if (preset === 'ring_redundancy') {
       presetDevices = [
-        { id: 'pc-1', label: 'PC #1', type: 'pc', ip: '10.1.1.10', mac: 'AA:11:22:33:44:01', status: 'active', position: { x: 100, y: 200 }, load: 0 },
+        { id: 'pc-1', label: 'PC #1', type: 'pc', ip: '10.1.1.10', gateway: '10.1.1.1', mac: 'AA:11:22:33:44:01', status: 'active', position: { x: 100, y: 200 }, load: 0 },
         { id: 'router-1', label: 'Router #1', type: 'router', ip: '10.1.1.1', mac: 'AA:11:22:33:44:02', status: 'active', position: { x: 280, y: 110 }, load: 0 },
         { id: 'router-2', label: 'Router #2', type: 'router', ip: '10.1.2.1', mac: 'AA:11:22:33:44:03', status: 'active', position: { x: 520, y: 110 }, load: 0 },
         { id: 'router-3', label: 'Router #3', type: 'router', ip: '10.1.3.1', mac: 'AA:11:22:33:44:04', status: 'active', position: { x: 520, y: 290 }, load: 0 },
         { id: 'router-4', label: 'Router #4', type: 'router', ip: '10.1.4.1', mac: 'AA:11:22:33:44:05', status: 'active', position: { x: 280, y: 290 }, load: 0 },
-        { id: 'server-1', label: 'Server #1', type: 'server', ip: '10.1.3.100', mac: 'AA:11:22:33:44:99', status: 'active', position: { x: 700, y: 290 }, load: 0 },
+        { id: 'server-1', label: 'Server #1', type: 'server', ip: '10.1.3.100', gateway: '10.1.3.1', mac: 'AA:11:22:33:44:99', status: 'active', position: { x: 700, y: 290 }, load: 0 },
       ];
       presetLinks = [
         { id: 'l1', source: 'pc-1', target: 'router-1', bandwidth: 100, latency: 2, cost: 1, status: 'active', utilization: 0 },
@@ -624,10 +728,10 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
       presetConfig = { ...DEFAULT_CONFIG, speed: 0.25, routingAlgorithm: 'bellman-ford' };
     } else if (preset === 'high_latency_sat') {
       presetDevices = [
-        { id: 'pc-1', label: 'PC Station', type: 'pc', ip: '192.168.0.5', mac: '00:E0:4C:00:00:01', status: 'active', position: { x: 120, y: 200 }, load: 0 },
+        { id: 'pc-1', label: 'PC Station', type: 'pc', ip: '192.168.0.5', gateway: '192.168.0.1', mac: '00:E0:4C:00:00:01', status: 'active', position: { x: 120, y: 200 }, load: 0 },
         { id: 'router-1', label: 'Ground Station', type: 'router', ip: '192.168.0.1', mac: '00:E0:4C:00:00:02', status: 'active', position: { x: 330, y: 200 }, load: 0 },
         { id: 'router-2', label: 'Sat Transceiver', type: 'router', ip: '10.254.0.1', mac: '00:E0:4C:00:00:03', status: 'active', position: { x: 540, y: 200 }, load: 0 },
-        { id: 'server-1', label: 'Cloud Server', type: 'server', ip: '10.254.0.100', mac: '00:E0:4C:00:00:99', status: 'active', position: { x: 750, y: 200 }, load: 0 },
+        { id: 'server-1', label: 'Cloud Server', type: 'server', ip: '10.254.0.100', gateway: '10.254.0.1', mac: '00:E0:4C:00:00:99', status: 'active', position: { x: 750, y: 200 }, load: 0 },
       ];
       presetLinks = [
         { id: 'l1', source: 'pc-1', target: 'router-1', bandwidth: 100, latency: 2, cost: 1, status: 'active', utilization: 0 },
@@ -637,6 +741,10 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
       presetConfig = { ...DEFAULT_CONFIG, speed: 0.25, latencyMultiplier: 4, congestion: 30 };
     }
 
+    // Every preset host gets an explicit /24 mask (so the DevicePanel shows the
+    // network/broadcast and the L3 subnet checks are meaningful).
+    presetDevices = presetDevices.map(d => ({ subnetMask: DEFAULT_MASK, ...d }));
+
     // Sync the IP allocator past any 192.168.1.x addresses this preset uses so
     // subsequently-added devices don't collide with the preset's devices.
     const maxOctet = presetDevices.reduce((max, d) => {
@@ -644,6 +752,7 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
       return m ? Math.max(max, parseInt(m[1], 10)) : max;
     }, 0);
     resetIPCounter(maxOctet > 0 ? Math.min(254, maxOctet + 1) : 1);
+    resetSeqCounter();
 
     set({
       devices: presetDevices,
@@ -675,6 +784,7 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
         return m ? Math.max(max, parseInt(m[1], 10)) : max;
       }, 0);
       if (maxOctet > 0) resetIPCounter(Math.min(254, maxOctet + 1));
+      resetSeqCounter();
 
       set({
         devices: data.devices,
@@ -715,3 +825,31 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
 
   clearEvents: () => set({ events: [] }),
 }));
+
+/* ─── Autosave subscription ─── */
+// Debounced mirror of the working topology to localStorage. Only structural state
+// (devices/links/config) triggers a write; transient load/utilization are zeroed so
+// a restored session starts visually idle.
+let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+useNetworkStore.subscribe((state, prev) => {
+  if (
+    state.devices === prev.devices &&
+    state.links === prev.links &&
+    state.simConfig === prev.simConfig
+  ) return;
+  if (autosaveTimer) clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
+        version: '1.0.0',
+        name: 'autosave',
+        devices: state.devices.map(d => ({ ...d, load: 0 })),
+        links: state.links.map(l => ({ ...l, utilization: 0 })),
+        config: state.simConfig,
+        savedAt: new Date().toISOString(),
+      }));
+    } catch {
+      /* storage unavailable or over quota — non-fatal */
+    }
+  }, 500);
+});

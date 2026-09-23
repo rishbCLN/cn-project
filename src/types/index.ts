@@ -7,6 +7,8 @@ export interface Device {
   type: DeviceType;
   label: string;
   ip: string;
+  subnetMask?: string;   // e.g. '255.255.255.0' (defaults to /24 when absent)
+  gateway?: string;      // default gateway IP — required for a host to leave its subnet
   mac?: string;
   status: DeviceStatus;
   position: { x: number; y: number };

@@ -15,6 +15,58 @@ export function isValidIP(ip: string): boolean {
   });
 }
 
+/* ─── Subnet math (IPv4) ─── */
+export const DEFAULT_MASK = '255.255.255.0';
+
+export function ipToInt(ip: string): number | null {
+  if (!isValidIP(ip)) return null;
+  return ip.split('.').reduce((acc, p) => (acc << 8) + parseInt(p, 10), 0) >>> 0;
+}
+
+export function intToIp(n: number): string {
+  return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
+}
+
+/** A valid subnet mask is a run of contiguous 1s followed by contiguous 0s. */
+export function isValidMask(mask: string): boolean {
+  const n = ipToInt(mask);
+  if (n === null) return false;
+  const inv = (~n) >>> 0;              // host-bit mask (low bits set)
+  return ((inv + 1) & inv) === 0;      // inv must be 2^k - 1
+}
+
+export function maskToCidr(mask: string): number | null {
+  const n = ipToInt(mask);
+  if (n === null || !isValidMask(mask)) return null;
+  let count = 0, x = n;
+  while (x) { count += x & 1; x >>>= 1; }
+  return count;
+}
+
+export function cidrToMask(cidr: number): string {
+  const n = cidr <= 0 ? 0 : (0xffffffff << (32 - cidr)) >>> 0;
+  return intToIp(n);
+}
+
+export function networkAddress(ip: string, mask: string): string | null {
+  const i = ipToInt(ip), m = ipToInt(mask);
+  if (i === null || m === null) return null;
+  return intToIp((i & m) >>> 0);
+}
+
+export function broadcastAddress(ip: string, mask: string): string | null {
+  const i = ipToInt(ip), m = ipToInt(mask);
+  if (i === null || m === null) return null;
+  return intToIp((i | ((~m) >>> 0)) >>> 0);
+}
+
+/** True when two IPs share the same network under the given mask. */
+export function sameSubnet(ipA: string, ipB: string, mask: string): boolean {
+  const na = networkAddress(ipA, mask);
+  const nb = networkAddress(ipB, mask);
+  return na !== null && na === nb;
+}
+
 /* ─── Auto IP Generator ─── */
 let ipCounter = 1;
 export function nextIP(): string {

@@ -15,7 +15,6 @@ export default defineConfig({
         manualChunks(id: string) {
           if (id.includes('node_modules')) {
             if (id.includes('react-dom') || id.includes('/react/')) return 'react';
-            if (id.includes('reactflow') || id.includes('@reactflow')) return 'reactflow';
             if (id.includes('framer-motion') || id.includes('motion-dom') || id.includes('motion-utils')) return 'motion';
           }
         },

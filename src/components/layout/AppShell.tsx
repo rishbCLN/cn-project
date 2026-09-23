@@ -24,6 +24,7 @@ const panelTabs = [
 export const AppShell: React.FC = () => {
   const selectedDeviceId = useNetworkStore(s => s.selectedDeviceId);
   const selectedLinkId = useNetworkStore(s => s.selectedLinkId);
+  const selectDevice = useNetworkStore(s => s.selectDevice);
   const clearEvents = useNetworkStore(s => s.clearEvents);
   const events = useNetworkStore(s => s.events);
   const activePanel = useUIStore(s => s.activePanel);
@@ -36,6 +37,13 @@ export const AppShell: React.FC = () => {
   const [timelineHeight, setTimelineHeight] = React.useState(200);
   const [isResizing, setIsResizing] = React.useState(false);
   const [isExpanded, setIsExpanded] = React.useState(false);
+
+  // Track the active drag listeners so a teardown before mouseup fires (e.g.
+  // the shell unmounting mid-drag) can detach them; otherwise they leak on window.
+  const resizeHandlers = React.useRef<{
+    move: (e: MouseEvent) => void;
+    up: () => void;
+  } | null>(null);
 
   const startResizing = React.useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -53,11 +61,22 @@ export const AppShell: React.FC = () => {
       setIsResizing(false);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
+      resizeHandlers.current = null;
     };
 
+    resizeHandlers.current = { move: onMouseMove, up: onMouseUp };
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
   }, [timelineHeight]);
+
+  // Detach any dangling drag listeners if the shell unmounts mid-drag.
+  React.useEffect(() => () => {
+    if (resizeHandlers.current) {
+      window.removeEventListener('mousemove', resizeHandlers.current.move);
+      window.removeEventListener('mouseup', resizeHandlers.current.up);
+      resizeHandlers.current = null;
+    }
+  }, []);
 
   const toggleExpandHeight = () => {
     if (isExpanded) {
@@ -73,6 +92,16 @@ export const AppShell: React.FC = () => {
   const effectivePanel = selectedDeviceId ? 'device'
     : selectedLinkId ? 'link'
     : activePanel;
+
+  // When a node/link is selected its detail panel is shown in place of the tab
+  // screens. Surface it as its own active tab so the TX/INSPECT/STATS screens
+  // stay visible and clickable rather than being silently covered.
+  const contextTab = selectedDeviceId
+    ? { key: 'device' as const, label: 'DEVICE' }
+    : selectedLinkId
+    ? { key: 'link' as const, label: 'LINK' }
+    : null;
+  const visibleTabs = contextTab ? [contextTab, ...panelTabs] : [...panelTabs];
 
   const renderPanel = () => {
     switch (effectivePanel) {
@@ -115,14 +144,22 @@ export const AppShell: React.FC = () => {
             display: 'flex', borderBottom: '1px solid var(--border-glass)',
             padding: '0 4px',
           }}>
-            {panelTabs.map(tab => {
-              const isActive = effectivePanel === tab.key ||
-                (effectivePanel === 'device' && tab.key === 'send') ||
-                (effectivePanel === 'link' && tab.key === 'send');
+            {visibleTabs.map(tab => {
+              const isActive = effectivePanel === tab.key;
+              const isContext = tab.key === 'device' || tab.key === 'link';
               return (
                 <motion.button
                   key={tab.key}
-                  onClick={() => setPanel(tab.key as any)}
+                  onClick={() => {
+                    // The device/link context tab is already showing — leave the
+                    // selection intact. Any real tab click must win over the
+                    // auto-opened detail panel, so clear the selection first;
+                    // otherwise effectivePanel stays pinned to 'device'/'link'
+                    // and the TX/INSPECT/STATS screens are unreachable.
+                    if (isContext) return;
+                    selectDevice(null);
+                    setPanel(tab.key as any);
+                  }}
                   whileTap={{ scale: 0.95 }}
                   style={{
                     flex: 1,
@@ -130,13 +167,13 @@ export const AppShell: React.FC = () => {
                     fontSize: '10.5px',
                     fontWeight: 700,
                     letterSpacing: '0.14em',
-                    background: isActive ? 'var(--signal-dim)' : 'transparent',
+                    background: isActive ? (isContext ? 'rgba(34,211,238,0.12)' : 'var(--signal-dim)') : 'transparent',
                     border: 'none',
                     borderBottom: `2px solid ${
-                      isActive ? 'var(--signal)' : 'transparent'
+                      isActive ? (isContext ? 'var(--accent-cyan)' : 'var(--signal)') : 'transparent'
                     }`,
-                    color: isActive ? 'var(--signal)' : 'var(--text-muted)',
-                    cursor: 'pointer',
+                    color: isActive ? (isContext ? 'var(--accent-cyan)' : 'var(--signal)') : 'var(--text-muted)',
+                    cursor: isContext ? 'default' : 'pointer',
                     fontFamily: 'JetBrains Mono, monospace',
                     transition: 'all 0.2s',
                   }}

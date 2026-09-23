@@ -11,6 +11,8 @@ import { genId, simpleChecksum } from '../utils/helpers';
 
 /* ─── Sequence counter ─── */
 let seqCounter = 0;
+/** Reset the packet sequence counter — called on full sim/workspace/scenario reset. */
+export function resetSeqCounter() { seqCounter = 0; }
 
 /**
  * Calculate exact theoretical Round Trip Time (RTT) across all nodes/hops in the path.
@@ -218,22 +220,32 @@ export function processHop(
   let updatedPacket = { ...packet, hopTimestamps: [...packet.hopTimestamps] };
   let ack: Packet | undefined;
 
-  // ─── REACTIVE: Validate next-hop link is still alive ───
+  // Degenerate single-node path (source === destination): there is no hop to make,
+  // so deliver immediately rather than advancing to a non-existent next node.
+  if (packet.path.length < 2) {
+    updatedPacket.status = 'delivered';
+    updatedPacket.deliveredAt = now;
+    return { packet: updatedPacket, events };
+  }
+
+  // ─── REACTIVE: Validate next-hop link AND device are still alive ───
   const prevDeviceId = packet.path[packet.currentHop];
   const nextDeviceId = packet.path[packet.currentHop + 1];
 
   if (nextDeviceId) {
+    const nextDevice = devices.find(d => d.id === nextDeviceId);
     const nextLink = links.find(
       l => l.status === 'active' &&
         ((l.source === prevDeviceId && l.target === nextDeviceId) ||
          (l.source === nextDeviceId && l.target === prevDeviceId))
     );
 
-    // Link is gone or severed — attempt live reroute
-    if (!nextLink) {
+    // Link severed/removed OR next-hop device disabled — attempt live reroute
+    if (!nextLink || !nextDevice || nextDevice.status !== 'active') {
       const currentDevice = devices.find(d => d.id === prevDeviceId);
       const destDevice = devices.find(d => d.id === packet.destDeviceId);
       const currentLabel = currentDevice ? `${currentDevice.label} (${currentDevice.ip})` : prevDeviceId;
+      const reason = !nextLink ? 'next-hop link severed' : `next hop ${nextDevice?.label ?? nextDeviceId} disabled`;
 
       // Try to find an alternative route from current position
       const graph = buildGraph(devices, links);
@@ -249,7 +261,7 @@ export function processHop(
         events.push({
           id: genId(), time: now, type: 'reroute',
           packetId: packet.id,
-          description: `⚡ REROUTE: Packet #${packet.seqNum} at ${currentLabel} — link severed, rerouted to ${destLabel} via new path (cost ${reroute.totalCost.toFixed(1)}, ${reroute.path.length - 1} hops)`,
+          description: `⚡ REROUTE: Packet #${packet.seqNum} at ${currentLabel} — ${reason}, rerouted to ${destLabel} via new path (cost ${reroute.totalCost.toFixed(1)}, ${reroute.path.length - 1} hops)`,
         });
         // Continue processing with the new path (fall through to normal hop logic)
       } else {
@@ -258,7 +270,7 @@ export function processHop(
         events.push({
           id: genId(), time: now, type: 'packet_dropped',
           packetId: packet.id,
-          description: `Packet #${packet.seqNum} dropped at ${currentLabel} — next-hop link severed and no alternative route to ${destDevice?.label ?? packet.destIP}`,
+          description: `Packet #${packet.seqNum} dropped at ${currentLabel} — ${reason} and no alternative route to ${destDevice?.label ?? packet.destIP}`,
         });
         return { packet: updatedPacket, events };
       }
@@ -308,6 +320,13 @@ export function processHop(
         packetId: packet.id,
         description: `TCP Retransmission #${retryCount + 1} scheduled for packet #${packet.seqNum} (Packet Loss recovery)`,
       });
+    } else if (packet.protocol === 'TCP') {
+      // Retransmission budget exhausted — the sender's RTO fires with no ACK.
+      events.push({
+        id: genId(), time: now, type: 'timeout',
+        packetId: packet.id,
+        description: `TCP timeout: packet #${packet.seqNum} abandoned after ${retryCount} retransmission attempts — RTO exceeded, no ACK received`,
+      });
     }
 
     return { packet: updatedPacket, events };
@@ -318,7 +337,19 @@ export function processHop(
   updatedPacket.hopTimestamps.push(now);
   updatedPacket.status = 'in-transit';
 
-  const currentDevice = devices.find(d => d.id === packet.path[updatedPacket.currentHop]);
+  // The very first advance from the source node = the packet is actually placed
+  // on the wire (distinct from 'packet_created', which is just its construction).
+  if (packet.currentHop === 0) {
+    const srcDev = devices.find(d => d.id === packet.sourceDeviceId);
+    const srcStr = srcDev ? `${srcDev.label} (${srcDev.ip})` : packet.sourceIP;
+    events.push({
+      id: genId(), time: now, type: 'packet_sent',
+      packetId: packet.id,
+      description: `Packet #${packet.seqNum} (${packet.size} B) sent from ${srcStr} onto the wire [${packet.protocol}${packet.isAck ? ' ACK' : ''}]`,
+    });
+  }
+
+  const currentDevice = devices.find(d => d.id === updatedPacket.path[updatedPacket.currentHop]);
   const currentDeviceStr = currentDevice ? `${currentDevice.label} (${currentDevice.ip})` : 'unknown node';
 
   // 1. Packet Hop (Physical/Link Layer arrival with exact T_trans, T_prop, T_queue calculations)
@@ -354,6 +385,12 @@ export function processHop(
         packetId: packet.id,
         description: `TCP Retransmission #${corruptRetry + 1} scheduled for packet #${packet.seqNum} (corruption recovery)`,
       });
+    } else if (packet.protocol === 'TCP') {
+      events.push({
+        id: genId(), time: now, type: 'timeout',
+        packetId: packet.id,
+        description: `TCP timeout: packet #${packet.seqNum} abandoned after ${corruptRetry} retransmission attempts — repeated corruption, no valid ACK`,
+      });
     }
 
     return { packet: updatedPacket, events };
@@ -376,43 +413,54 @@ export function processHop(
     const destDevice = devices.find(d => d.id === packet.destDeviceId);
     const destStr = destDevice ? `${destDevice.label} (${destDevice.ip})` : updatedPacket.destIP;
 
-    events.push({
-      id: genId(), time: now, type: 'packet_delivered',
-      packetId: packet.id,
-      description: `Packet #${packet.seqNum} (${packet.size} B) delivered to ${destStr} — [Total Latency: ~${totalLatencyEst} ms | Goodput: ${goodputKbps} Kbps | BDP: ${hopMetrics.bdpKB} KB]`,
-    });
-
-    // Generate ACK for TCP
-    if (packet.protocol === 'TCP') {
-      const srcDevice = devices.find(d => d.id === packet.sourceDeviceId);
-      const srcStr = srcDevice ? `${srcDevice.label} (${srcDevice.ip})` : updatedPacket.sourceIP;
-
-      ack = {
-        id: genId(),
-        sourceIP: updatedPacket.destIP,
-        sourceDeviceId: updatedPacket.destDeviceId,
-        destIP: updatedPacket.sourceIP,
-        destDeviceId: updatedPacket.sourceDeviceId,
-        protocol: 'TCP',
-        size: 40,
-        ttl: 64,
-        seqNum: updatedPacket.seqNum,
-        ackNum: updatedPacket.seqNum + 1,
-        checksum: simpleChecksum(`ACK-${packet.seqNum}`),
-        crc: computeCRC32(`ACK-${packet.seqNum}`),
-        crcValid: true,
-        path: [...updatedPacket.path].reverse(),
-        currentHop: 0,
-        status: 'in-transit',
-        createdAt: now,
-        hopTimestamps: [now],
-        isAck: true,
-      };
+    if (packet.isAck) {
+      // The ACK has arrived back at the original sender — reliability loop closed.
+      // An ACK is never itself acknowledged (otherwise ACKs would beget ACKs forever).
       events.push({
-        id: genId(), time: now, type: 'ack_sent',
-        packetId: ack.id,
-        description: `ACK sent from ${destStr} to ${srcStr} for packet #${packet.seqNum} (Seq #${updatedPacket.seqNum}, Ack #${updatedPacket.seqNum + 1}, Size 40 B) — [Exact Path RTT: ${updatedPacket.rttMs ?? (hopMetrics.totalHopDelayMs * 2).toFixed(1)} ms across ${updatedPacket.path.length} Nodes]`,
+        id: genId(), time: now, type: 'ack_received',
+        packetId: packet.id,
+        description: `ACK for packet #${packet.seqNum} received at ${destStr} — round trip confirmed [RTT: ${updatedPacket.rttMs ?? (hopMetrics.totalHopDelayMs * 2).toFixed(1)} ms across ${updatedPacket.path.length} Nodes]`,
       });
+    } else {
+      events.push({
+        id: genId(), time: now, type: 'packet_delivered',
+        packetId: packet.id,
+        description: `Packet #${packet.seqNum} (${packet.size} B) delivered to ${destStr} — [Total Latency: ~${totalLatencyEst} ms | Goodput: ${goodputKbps} Kbps | BDP: ${hopMetrics.bdpKB} KB]`,
+      });
+
+      // Generate ACK for delivered TCP data segments (never for ACKs themselves).
+      if (packet.protocol === 'TCP') {
+        const srcDevice = devices.find(d => d.id === packet.sourceDeviceId);
+        const srcStr = srcDevice ? `${srcDevice.label} (${srcDevice.ip})` : updatedPacket.sourceIP;
+
+        ack = {
+          id: genId(),
+          sourceIP: updatedPacket.destIP,
+          sourceDeviceId: updatedPacket.destDeviceId,
+          destIP: updatedPacket.sourceIP,
+          destDeviceId: updatedPacket.sourceDeviceId,
+          protocol: 'TCP',
+          size: 40,
+          ttl: 64,
+          seqNum: updatedPacket.seqNum,
+          ackNum: updatedPacket.seqNum + 1,
+          checksum: simpleChecksum(`ACK-${packet.seqNum}`),
+          crc: computeCRC32(`ACK-${packet.seqNum}`),
+          crcValid: true,
+          path: [...updatedPacket.path].reverse(),
+          currentHop: 0,
+          status: 'in-transit',
+          createdAt: now,
+          hopTimestamps: [now],
+          isAck: true,
+          rttMs: updatedPacket.rttMs,
+        };
+        events.push({
+          id: genId(), time: now, type: 'ack_sent',
+          packetId: ack.id,
+          description: `ACK sent from ${destStr} to ${srcStr} for packet #${packet.seqNum} (Seq #${updatedPacket.seqNum}, Ack #${updatedPacket.seqNum + 1}, Size 40 B) — [Exact Path RTT: ${updatedPacket.rttMs ?? (hopMetrics.totalHopDelayMs * 2).toFixed(1)} ms across ${updatedPacket.path.length} Nodes]`,
+        });
+      }
     }
   }
 
@@ -423,16 +471,46 @@ export function processHop(
  * Compute fresh metrics from packet history using exact path RTT.
  */
 export function computeMetrics(history: Packet[]): Metrics {
-  const sent = history.filter(p => !p.isAck).length;
-  const delivered = history.filter(p => p.status === 'delivered' && !p.isAck).length;
-  const lost = history.filter(p => p.status === 'dropped' && !p.isAck).length;
-  // Corruption is the only thing that flips crcValid → false. Keying off that
-  // (rather than status) avoids miscounting loss-triggered retransmissions,
-  // which also carry the 'retransmitting' status but are NOT corrupted.
-  const corrupted = history.filter(p => p.crcValid === false && !p.isAck).length;
-  const retransmissions = history.filter(p => p.retransmissionOf).length;
+  const dataPackets = history.filter(p => !p.isAck);
 
-  const deliveredPackets = history.filter(p => p.status === 'delivered' && !p.isAck);
+  // A retransmission chain is ONE logical flow: every generation shares the
+  // root packet id via `retransmissionOf` (the store sets it to the original
+  // id, not the immediate parent). Outcome metrics are measured per flow so a
+  // packet delivered after N retries counts as one delivery — not one delivery
+  // out of N+1 "sent" — which previously deflated the delivery rate under loss.
+  const flows = new Map<string, Packet[]>();
+  for (const p of dataPackets) {
+    const rootId = p.retransmissionOf ?? p.id;
+    const group = flows.get(rootId);
+    if (group) group.push(p);
+    else flows.set(rootId, [p]);
+  }
+
+  let sent = 0;
+  let delivered = 0;
+  let lost = 0;
+  const deliveredPackets: Packet[] = [];
+  for (const group of flows.values()) {
+    sent++;
+    // At most one generation per flow can reach 'delivered' (delivery ends the
+    // flow); the rest are transient 'retransmitting'/in-flight states.
+    const deliveredPkt = group.find(p => p.status === 'delivered');
+    if (deliveredPkt) {
+      delivered++;
+      deliveredPackets.push(deliveredPkt);
+    } else if (group.some(p => p.status === 'dropped' || p.status === 'corrupted')) {
+      // Terminal failure: retries exhausted (TCP) or a single-shot UDP drop /
+      // corruption. Flows still in flight fall through and count toward neither.
+      lost++;
+    }
+  }
+
+  // Diagnostic counters stay per-attempt/event: `corrupted` is every CRC failure
+  // (keyed off crcValid, so recovered TCP corruptions still register as events),
+  // and `retransmissions` is the total number of retry attempts.
+  const corrupted = dataPackets.filter(p => p.crcValid === false).length;
+  const retransmissions = dataPackets.filter(p => p.retransmissionOf).length;
+
   const rtts = deliveredPackets.map(p => p.rttMs ?? 0).filter(r => r > 0);
   const avgRTT = rtts.length > 0 ? Number((rtts.reduce((a, b) => a + b, 0) / rtts.length).toFixed(2)) : 0;
 
@@ -451,6 +529,6 @@ export function computeMetrics(history: Packet[]): Metrics {
     avgRTT,
     throughput: Math.max(0, Number(throughput.toFixed(3))),
     deliveryRate: sent > 0 ? Number(((delivered / sent) * 100).toFixed(1)) : 0,
-    errorRate: sent > 0 ? Number((((lost + corrupted) / sent) * 100).toFixed(1)) : 0,
+    errorRate: sent > 0 ? Number(((lost / sent) * 100).toFixed(1)) : 0,
   };
 }

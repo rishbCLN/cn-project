@@ -11,6 +11,14 @@ export const Inspector: React.FC = () => {
   const devices = useNetworkStore(s => s.devices);
   const setInspectedPacket = useUIStore(s => s.setInspectedPacket);
 
+  const packet = packetHistory.find(p => p.id === inspectedPacketId);
+
+  // If the inspected packet has aged out of the capped history, clear the stale
+  // selection so we fall back to the history list instead of a blank dead-end.
+  React.useEffect(() => {
+    if (inspectedPacketId && !packet) setInspectedPacket(null);
+  }, [inspectedPacketId, packet, setInspectedPacket]);
+
   // If no packet inspected, show packet history list
   if (!inspectedPacketId) {
     return (
@@ -65,7 +73,6 @@ export const Inspector: React.FC = () => {
     );
   }
 
-  const packet = packetHistory.find(p => p.id === inspectedPacketId);
   if (!packet) return null;
 
   // Resolve real endpoint devices so the frame dump reflects the actual topology.
@@ -184,7 +191,7 @@ export const Inspector: React.FC = () => {
             const device = devices.find(d => d.id === nodeId);
             const isCurrent = i === packet.currentHop;
             return (
-              <React.Fragment key={nodeId}>
+              <React.Fragment key={`${nodeId}-${i}`}>
                 <span style={{
                   padding: '2px 8px',
                   borderRadius: '6px',

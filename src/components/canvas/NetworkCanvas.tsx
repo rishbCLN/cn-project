@@ -1,227 +1,30 @@
-import React, { useCallback, useMemo, useRef } from 'react';
-import ReactFlow, {
-  Background, Controls, MiniMap,
-  Connection,
-  Node, Edge,
-  OnNodesChange,
-  BackgroundVariant,
-  ReactFlowInstance,
-  NodeTypes,
-  EdgeTypes,
-  ConnectionMode,
-} from 'reactflow';
-import 'reactflow/dist/style.css';
+import React from 'react';
 
 import { useNetworkStore } from '../../stores/networkStore';
 import { useUIStore } from '../../stores/uiStore';
-import DeviceNode from './DeviceNode';
-import NetworkEdge from './NetworkEdge';
-import { PacketLayer } from './PacketDot';
+import { NetworkScene3D } from './NetworkScene3D';
 import { CanvasOnboarding } from './CanvasOnboarding';
-import { DeviceType } from '../../types';
-
-const nodeTypes: NodeTypes = {
-  device: DeviceNode,
-};
-
-const edgeTypes: EdgeTypes = {
-  network: NetworkEdge,
-};
-
+import { Minimap } from './Minimap';
 import { PresetInfoCard } from '../dashboard/PresetInfoCard';
 
+/**
+ * NetworkCanvas — hosts the interactive 3D network scene (Three.js) plus the
+ * floating 2D overlays (preset banner, onboarding, controls hint).
+ *
+ * Interaction model inside the 3D viewport:
+ *  • Left-drag empty space  → orbit camera   • Wheel → zoom   • Right-drag → pan
+ *  • Left-drag a node       → move it on the ground plane
+ *  • Click a node / link    → select   • Double-click → delete
+ *  • Shift-drag (or right-drag) node → node  → create a link
+ *  • Drag a device from the sidebar → drop onto the floor to add it
+ */
 export const NetworkCanvas: React.FC = () => {
   const devices = useNetworkStore(s => s.devices);
-  const links = useNetworkStore(s => s.links);
-  const selectedDeviceId = useNetworkStore(s => s.selectedDeviceId);
-  const addDevice = useNetworkStore(s => s.addDevice);
-  const addLink = useNetworkStore(s => s.addLink);
-  const removeDevice = useNetworkStore(s => s.removeDevice);
-  const removeLink = useNetworkStore(s => s.removeLink);
-  const selectDevice = useNetworkStore(s => s.selectDevice);
-  const selectLink = useNetworkStore(s => s.selectLink);
-  const updateDevicePosition = useNetworkStore(s => s.updateDevicePosition);
   const showMinimap = useUIStore(s => s.showMinimap);
 
-  const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const rfInstance = useRef<ReactFlowInstance | null>(null);
-
-  // Convert devices → React Flow nodes
-  const nodes: Node[] = useMemo(() => {
-    return devices.map(device => ({
-      id: device.id,
-      type: 'device',
-      position: device.position,
-      data: { device },
-      selected: device.id === selectedDeviceId,
-      dragHandle: '.device-node-card',
-    }));
-  }, [devices, selectedDeviceId]);
-
-  // Convert links → React Flow edges
-  const edges: Edge[] = useMemo(() => {
-    return links.map(link => ({
-      id: link.id,
-      source: link.source,
-      target: link.target,
-      sourceHandle: link.sourceHandle,
-      targetHandle: link.targetHandle,
-      type: 'network',
-      data: {
-        utilization: link.utilization,
-        status: link.status,
-        bandwidth: link.bandwidth,
-        latency: link.latency,
-      },
-    }));
-  }, [links]);
-
-  const onNodesChange: OnNodesChange = useCallback((changes) => {
-    for (const change of changes) {
-      if (change.type === 'position' && change.position) {
-        updateDevicePosition(change.id, change.position);
-      }
-    }
-  }, [updateDevicePosition]);
-
-  const startDraggingConnection = useUIStore(s => s.startDraggingConnection);
-  const stopDraggingConnection = useUIStore(s => s.stopDraggingConnection);
-
-  const onConnectStart = useCallback((_: any, { nodeId }: any) => {
-    if (nodeId) {
-      startDraggingConnection(nodeId);
-    }
-  }, [startDraggingConnection]);
-
-  const onConnectEnd = useCallback(() => {
-    stopDraggingConnection();
-  }, [stopDraggingConnection]);
-
-  const onConnect = useCallback((connection: Connection) => {
-    if (connection.source && connection.target) {
-      addLink(
-        connection.source,
-        connection.target,
-        connection.sourceHandle,
-        connection.targetHandle
-      );
-    }
-    stopDraggingConnection();
-  }, [addLink, stopDraggingConnection]);
-
-  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
-    selectDevice(node.id);
-  }, [selectDevice]);
-
-  const onNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node) => {
-    removeDevice(node.id);
-  }, [removeDevice]);
-
-  const onEdgeClick = useCallback((_: React.MouseEvent, edge: Edge) => {
-    selectLink(edge.id);
-  }, [selectLink]);
-
-  const onEdgeDoubleClick = useCallback((_: React.MouseEvent, edge: Edge) => {
-    removeLink(edge.id);
-  }, [removeLink]);
-
-  const onPaneClick = useCallback(() => {
-    selectDevice(null);
-    selectLink(null);
-  }, [selectDevice, selectLink]);
-
-  // Handle drop from sidebar
-  const onDragOver = useCallback((event: React.DragEvent) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
-  }, []);
-
-  const onDrop = useCallback((event: React.DragEvent) => {
-    event.preventDefault();
-    const type = event.dataTransfer.getData('application/deviceType') as DeviceType;
-    if (!type || !rfInstance.current) return;
-
-    const position = rfInstance.current.screenToFlowPosition({
-      x: event.clientX,
-      y: event.clientY,
-    });
-
-    addDevice(type, position);
-  }, [addDevice]);
-
-  const isValidConnection = useCallback((connection: Connection) => {
-    return connection.source !== connection.target;
-  }, []);
-
   return (
-    <div ref={reactFlowWrapper} style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onConnect={onConnect}
-        onConnectStart={onConnectStart}
-        onConnectEnd={onConnectEnd}
-        isValidConnection={isValidConnection}
-        onNodeClick={onNodeClick}
-        onNodeDoubleClick={onNodeDoubleClick}
-        onEdgeClick={onEdgeClick}
-        onEdgeDoubleClick={onEdgeDoubleClick}
-        onPaneClick={onPaneClick}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
-        onInit={(instance) => { rfInstance.current = instance; }}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        connectionMode={ConnectionMode.Loose}
-        connectionRadius={60}
-        deleteKeyCode={null}
-        fitView
-        snapToGrid
-        snapGrid={[15, 15]}
-        connectionLineStyle={{ stroke: '#06b6d4', strokeWidth: 2 }}
-        defaultEdgeOptions={{ type: 'network' }}
-        proOptions={{ hideAttribution: true }}
-      >
-        {/* Layered engineering grid: fine warm plotting paper + coarse rule */}
-        <Background
-          id="grid-fine"
-          variant={BackgroundVariant.Lines}
-          gap={26}
-          lineWidth={1}
-          color="rgba(236,232,225,0.035)"
-        />
-        <Background
-          id="grid-coarse"
-          variant={BackgroundVariant.Lines}
-          gap={130}
-          lineWidth={1}
-          color="rgba(255,180,84,0.05)"
-        />
-        <Controls
-          showInteractive={false}
-          style={{ bottom: 16, left: 16 }}
-        />
-        {showMinimap && (
-          <MiniMap
-            nodeColor={(node) => {
-              const device = node.data?.device;
-              if (!device) return '#64748b';
-              if (device.status === 'disabled') return '#374151';
-              const colors: Record<string, string> = {
-                router: '#3b82f6', switch: '#10b981',
-                server: '#8b5cf6', pc: '#06b6d4',
-              };
-              return colors[device.type] ?? '#64748b';
-            }}
-            maskColor="rgba(10, 14, 26, 0.85)"
-            style={{ bottom: 16, right: 16 }}
-          />
-        )}
-
-        {/* Animated packets travel along paths, aligned to the live viewport */}
-        <PacketLayer />
-      </ReactFlow>
+    <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
+      <NetworkScene3D />
 
       {/* ─── Preset Scenario Description Floating Banner ─── */}
       <div style={{
@@ -235,8 +38,48 @@ export const NetworkCanvas: React.FC = () => {
         <PresetInfoCard />
       </div>
 
+      {/* ─── 3D Controls Hint ─── */}
+      <div style={{
+        position: 'absolute',
+        bottom: 14,
+        left: 14,
+        zIndex: 10,
+        pointerEvents: 'none',
+        background: 'rgba(10, 14, 26, 0.72)',
+        backdropFilter: 'blur(8px)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: '8px',
+        padding: '8px 11px',
+        fontSize: '10px',
+        lineHeight: 1.6,
+        color: '#94a3b8',
+        fontFamily: 'JetBrains Mono, monospace',
+        maxWidth: '230px',
+      }}>
+        <div style={{ color: '#22d3ee', fontWeight: 700, marginBottom: 2, letterSpacing: '0.05em' }}>
+          3D VIEWPORT
+        </div>
+        <div>Drag empty · orbit &nbsp;|&nbsp; Wheel · zoom</div>
+        <div>Drag node · move &nbsp;|&nbsp; Right-drag · pan</div>
+        <div>Shift-drag node→node · link</div>
+        <div>Click · select &nbsp;|&nbsp; Dbl-click · delete</div>
+      </div>
+
       {/* ─── First-run onboarding (only when canvas is empty) ─── */}
       {devices.length === 0 && <CanvasOnboarding />}
+
+      {/* ─── Minimap overview (toggle: TopBar "Map") ─── */}
+      {showMinimap && (
+        <div style={{
+          position: 'absolute',
+          bottom: 14,
+          right: 14,
+          zIndex: 10,
+          pointerEvents: 'none',
+        }}>
+          <Minimap />
+        </div>
+      )}
     </div>
   );
 };
